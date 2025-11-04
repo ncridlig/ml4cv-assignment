@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Dataset Folders (StreetHazards)
+streethazards_train/
+streethazards_test/
+streethazards_val/
+*.tar
+*.tar.gz
+
+# Model Weights and Checkpoints
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.pickle
+checkpoints/
+weights/
+models/saved/
+
+# Output and Results
+outputs/
+results/
+runs/
+logs/
+wandb/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large files
+*.zip
+*.rar
+*.7z
+
+# Temporary files
+tmp/
+temp/
+*.tmp
