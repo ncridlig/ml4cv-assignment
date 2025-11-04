@@ -486,4 +486,183 @@ model.load_state_dict(state_dict, strict=False)  # Ignores aux_classifier keys
 
 ---
 
+## Day 2 (Continued) - Phase 4 Preparation: Anomaly Detection
+
+### Date: 2025-11-04 (Same day, continuing)
+
+### What We Did
+
+**Created Phase 4 implementation** while second training run (with aux fix) is in progress:
+
+1. **Implemented `logit_anomaly_detection.py`** - Complete anomaly detection evaluation script:
+   - **Method 1**: Simple Max Logits (baseline)
+     - Formula: `anomaly_score[i] = -max(logits[i])`
+     - Simpler approach from Hendrycks et al. paper
+
+   - **Method 2**: Standardized Max Logits (SML)
+     - Computes per-class statistics on validation set
+     - Formula: `SML[i] = (max_logit[i] - μ_c) / σ_c`
+     - Then: `anomaly_score[i] = -SML[i]`
+     - Expected to outperform Simple Max Logits by 30-50%
+
+   - **Evaluation metrics**:
+     - AUPR (Area Under Precision-Recall) - Primary metric
+     - AUROC (Area Under ROC Curve)
+     - F1 Score at optimal threshold
+     - Side-by-side method comparison
+
+2. **Data loading strategy**:
+   - ✅ Uses existing `StreetHazardsDataset` and `get_transforms` from `dataloader.py`
+   - No additional utility functions needed
+   - **Validation set**: Computes clean class statistics (no anomalies present)
+   - **Test set**: Evaluates anomaly detection performance (has anomalies)
+
+3. **Output structure**:
+   ```
+   assets/anomaly_detection/
+   ├── method_comparison.png      # PR and ROC curves
+   ├── results_summary.txt         # Metrics summary
+   └── samples/                    # 10 visualizations showing:
+       ├── sample_0000.png         #   - Input, GT, Prediction
+       └── ...                     #   - Simple scores, SML scores, GT anomaly mask
+   ```
+
+### Current Status
+- **Phase**: Phase 4 prepared, awaiting model training completion
+- **Training in progress**: DeepLabV3+ with aux classifier fix (20 epochs, ~1.5-2 hours)
+- **Files Created**:
+  - `logit_anomaly_detection.py` (318 lines, ready to run)
+
+### Expected Results (from literature)
+| Method | Expected AUPR | Notes |
+|--------|---------------|-------|
+| Simple Max Logits | 10-15% | Baseline |
+| Standardized Max Logits | 15-25% | 30-50% improvement over baseline |
+
+### ⚠️ TODO: Test Phase 4 Script
+
+**Once current training completes:**
+
+1. **Verify model path** in `logit_anomaly_detection.py`:
+   - Current setting: `MODEL_PATH = 'best_deeplabv3_streethazards.pth'`
+   - May need to update to new timestamped model: `models/best_deeplabv3_streethazards_HH_MM_DD-MM-YY.pth`
+
+2. **Run anomaly detection evaluation**:
+   ```bash
+   python3 logit_anomaly_detection.py
+   ```
+
+3. **Expected runtime**: ~5-10 minutes (inference on 2531 images total)
+
+4. **Check outputs**:
+   - Verify AUPR metrics are in expected range (10-25%)
+   - Review method comparison plot (PR/ROC curves)
+   - Inspect sample visualizations (should show red heatmaps on anomalies)
+   - Compare Simple vs SML performance (SML should be better)
+
+5. **If successful**: Document results in log.md and proceed to Phase 5 (if time) or Phase 6 (ablations)
+
+6. **If issues**: Debug and fix before moving forward
+
+### ⚠️ TODO: Evaluate Data Augmentation Strategy
+
+**Current transformations** (from `deeplabv3plus.py` line 29):
+```python
+train_transform = transforms.Compose([
+    transforms.Resize((512, 512)),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+```
+
+**Questions to investigate:**
+
+1. **Are current augmentations effective?**
+   - Check qualitative results: Do predictions look consistent across different lighting/contrast?
+   - Compare training vs validation loss curves: Large gap suggests overfitting → need more augmentation
+
+2. **What augmentations are missing?**
+   - **Random crop + resize**: Currently using fixed resize (512×512), might lose spatial context
+   - **Random rotation**: Roads can appear at different angles, rotation could help
+   - **Gaussian blur**: Simulates focus/motion blur in real driving
+   - **Random scaling**: Objects appear at different sizes
+   - **Elastic deformations**: Used in medical imaging (U-Net paper), but may not suit road scenes
+
+3. **What augmentations might hurt?**
+   - **Vertical flip**: Roads don't appear upside-down → would be harmful
+   - **Extreme color jitter**: Current 0.3 might be too aggressive for street scenes
+   - **Heavy rotation**: Roads are mostly horizontal → small rotations (±10°) better than large
+
+4. **Ablation study for Phase 6:**
+   - Train multiple models with different augmentation strategies:
+     - Baseline: Current setup
+     - Minimal: Only horizontal flip
+     - Moderate: Current + random crop + small rotation (±5°)
+     - Heavy: Current + crop + rotation + blur + scaling
+   - Compare validation mIoU and generalization to test set
+
+5. **Literature recommendations:**
+   - DeepLabV3+ paper uses: random scaling (0.5-2.0×), random crop, horizontal flip
+   - StreetHazards paper mentions: horizontal flip, color jitter
+   - Consider implementing multi-scale training (random crops at different resolutions)
+
+**Action items:**
+- [ ] Review TensorBoard: Check if training/validation gap is large (sign of underfitting or overfitting)
+- [ ] Inspect qualitative results: Look for systematic failures that augmentation could address
+- [ ] Decide: Keep current augmentations or experiment with additional ones
+- [ ] Document decision in log with reasoning
+- [ ] If changing augmentations: Retrain and compare results
+
+### Implementation Notes
+
+**Why this approach works:**
+- **Two-stage process**:
+  1. Validation set → Learn what "normal" looks like (class statistics)
+  2. Test set → Detect deviations from normal (anomalies)
+
+- **Standardization importance**:
+  - Different classes have different max logit distributions
+  - Example: "road" logits in [5,10], "pedestrian" logits in [2,7]
+  - Directly comparing raw logits is meaningless
+  - Standardization puts all classes on same scale
+
+- **Pixel-level evaluation**:
+  - Each pixel is classified as anomaly or normal
+  - Ground truth: pixel is class 13 (anomaly) or not
+  - Predicts continuous anomaly score (higher = more anomalous)
+  - AUPR measures how well scores separate anomalies from normal
+
+### Code Snippet to Remember
+
+```python
+# Simple Max Logits (Method 1)
+max_logits, _ = output.max(dim=1)
+anomaly_score = -max_logits  # Lower confidence = higher anomaly
+
+# Standardized Max Logits (Method 2)
+max_logits, pred_classes = output.max(dim=1)
+sml = (max_logits - class_means[c]) / class_stds[c]  # Per-class standardization
+anomaly_score = -sml  # Lower standardized score = higher anomaly
+```
+
+### Time Tracking
+- Data pipeline setup: 2 hours (Day 1)
+- Model implementation: 1 hour
+- First training run: 2.5 hours
+- Qualitative evaluation: 0.5 hours
+- Bug discovery & fix: 0.5 hours
+- Phase 4 preparation: 0.5 hours
+- **Total so far**: ~7 / 50 hours
+
+**Remaining budget**: 43 hours for:
+- Phase 4 testing/refinement: ~2 hours
+- Phase 5 (advanced methods): ~10 hours (optional)
+- Phase 6 (ablations): ~8 hours
+- Phase 7 (documentation): ~6 hours
+- Buffer: ~17 hours
+
+---
+
 *Last updated: 2025-11-04*

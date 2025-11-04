@@ -35,7 +35,6 @@ models/saved/
 # Output and Results
 outputs/
 results/
-runs/
 logs/
 wandb/
 
