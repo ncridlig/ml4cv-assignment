@@ -264,4 +264,226 @@ plot_samples(train_dataset, num_samples=5)
 
 ---
 
+---
+
+## Day 2 - Phase 2: Baseline Model - First Training Attempt ✓
+
+### Date: 2025-11-04
+
+### What We Did Today
+
+1. **Implemented DeepLabV3+ baseline model** (`deeplabv3plus.py`):
+   - Architecture: ResNet50 backbone with pretrained ImageNet weights
+   - Modified final classifier layer to predict 13 classes (0-12, ignoring anomaly)
+   - Training configuration:
+     - Optimizer: Adam with learning rate 1e-4
+     - Scheduler: ReduceLROnPlateau (patience=3, factor=0.5)
+     - Loss: CrossEntropyLoss (ignore_index=13)
+     - Batch size: 4
+     - Epochs: 30
+     - Image size: 512x512
+     - Data augmentation: RandomHorizontalFlip, ColorJitter
+
+2. **First training run completed**:
+   - **Training time**: 2.5 hours (30 epochs)
+   - **Best validation mIoU**: 31-33%
+   - Model checkpoint saved: `best_deeplabv3_streethazards.pth` (168 MB)
+   - TensorBoard logs: `runs/streethazards_experiment/`
+   - GPU: RTX 4080 at ~88% utilization
+
+3. **Created qualitative evaluation script** (`evaluate_qualitative.py`):
+   - Generates detailed visualizations for model predictions
+   - Shows: Input | Ground Truth | Prediction | Overlay | Confidence Map | Error Map
+   - Computes per-sample metrics: mIoU, pixel accuracy, confidence scores
+   - Detects and highlights anomalies in test set
+   - Creates comparison grids for quick overview
+
+4. **Qualitative evaluation results** (10 samples per split):
+   - **Validation set**: Mean mIoU = 38.8% ± 4.8% (range: 33.1% - 47.7%)
+   - **Test set**: Mean mIoU = 30.9% ± 9.9% (range: 13.6% - 50.7%)
+   - Test performance ~8% lower than validation (expected due to anomalies)
+   - Visualizations saved to: `assets/qualitative_eval/`
+
+5. **🐛 CRITICAL BUG DISCOVERED: Auxiliary Classifier Not Enabled**
+   - **Problem identified**: During code review, discovered that the auxiliary classifier was not being used during training
+   - **Root cause analysis**:
+     - Line 63: Only modified main classifier output (`model.classifier[-1]`), but forgot auxiliary classifier
+     - Line 101: Only used `model(images)['out']`, ignoring auxiliary output
+     - Line 102: Only computed loss on main output
+   - **Impact**: Missing out on improved gradient flow to middle layers (~0.5-1% mIoU improvement expected)
+
+6. **Bug fix implemented** (with Claude's assistance):
+   - Added `model.aux_classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)` to reconfigure aux output
+   - Modified `train_one_epoch()` to compute both main and auxiliary losses
+   - Implemented weighted loss combination: `loss = main_loss + 0.4 * aux_loss` (standard 0.4 weight)
+   - Added separate tracking for main/aux/total losses in TensorBoard
+   - Updated training loop to use new return values
+
+7. **Fixed evaluation script bug**:
+   - Issue: `model.load_state_dict()` failed with strict mode due to aux_classifier keys
+   - Solution: Added `strict=False` parameter to ignore auxiliary classifier during inference
+   - Reasoning: Aux classifier only needed during training, not inference
+
+### Current Status
+- **Phase**: Phase 2 (Baseline Model) - First iteration complete, bug fixed
+- **Hours Used**: ~6 / 50
+- **Files Created**:
+  - `deeplabv3plus.py` (training script - now fixed with aux classifier)
+  - `evaluate_qualitative.py` (qualitative evaluation tool)
+  - `best_deeplabv3_streethazards.pth` (trained model - 168 MB)
+  - `assets/qualitative_eval/` (visualizations directory)
+
+- **Files Modified**:
+  - `log.md` (this file)
+
+### Training Results Summary
+
+#### Hyperparameters (First Attempt)
+- Model: DeepLabV3+ (ResNet50 backbone)
+- Learning rate: 1e-4 (Adam)
+- Batch size: 4
+- Epochs: 30
+- Image size: 512x512
+- Augmentations: RandomHorizontalFlip(0.5), ColorJitter(0.3)
+- Loss: CrossEntropyLoss (ignore anomaly class 13)
+- Scheduler: ReduceLROnPlateau (patience=3, factor=0.5)
+
+#### Performance Metrics
+| Split | Mean mIoU | Std Dev | Min IoU | Max IoU | Notes |
+|-------|-----------|---------|---------|---------|-------|
+| Validation (all) | 31-33% | - | - | - | Reported during training |
+| Validation (10 samples) | 38.8% | ±4.8% | 33.1% | 47.7% | From qualitative eval |
+| Test (10 samples) | 30.9% | ±9.9% | 13.6% | 50.7% | Lower due to anomalies |
+
+**Note**: The 10-sample evaluation shows higher mIoU (38.8%) than the full validation average (31-33%), suggesting the sampled images may have been easier than the overall distribution.
+
+### Challenges & Solutions
+
+#### Challenge 1: Model Performance Below Target
+- **Expected**: 40-50% mIoU on validation
+- **Achieved**: 31-33% mIoU on validation (~20% below target)
+- **Possible causes**:
+  - Bug: Auxiliary classifier not enabled (missing ~0.5-1% improvement)
+  - Dataset difficulty: StreetHazards has 13 classes with significant class imbalance
+  - Hyperparameters: May need tuning (longer training, different LR, batch size)
+  - Augmentation: Current augmentation may be insufficient
+- **Solution**: Bug fixed. Next training run should show improvement.
+
+#### Challenge 2: Loading Model Checkpoint Failed
+- **Problem**: `RuntimeError: Unexpected key(s) in state_dict: "aux_classifier.*"`
+- **Cause**: Trained model has aux_classifier weights, but inference model was initialized without modifying aux_classifier
+- **Solution**: Use `model.load_state_dict(state_dict, strict=False)` to ignore aux_classifier keys during inference
+
+#### Challenge 3: Understanding Auxiliary Classifier Purpose
+- **Question**: Why does DeepLabV3 have an auxiliary classifier?
+- **Answer**: Provides additional supervision signal from intermediate layers (ResNet block 3)
+  - Helps gradients flow better through deep networks
+  - Reduces vanishing gradient problem
+  - Training loss = main_loss + 0.4 × aux_loss
+  - Only used during training; ignored during inference
+  - Expected improvement: ~0.5-1% mIoU (based on literature)
+
+### Learning Outcomes & Insights 📚
+
+> **Note**: Learning is a primary objective of this assignment. The process of discovery, debugging, and understanding is as valuable as the final results.
+
+**Key lessons from this session:**
+
+1. **Always verify training details**: Initially missed that auxiliary classifier wasn't being used. Code review revealed the bug.
+
+2. **Understanding architectural components**: Learned about auxiliary classifiers in semantic segmentation:
+   - Purpose: Improve gradient flow in deep networks
+   - Implementation: Extra prediction head at intermediate layer
+   - Training: Weighted sum of main and auxiliary losses
+   - Inference: Only use main output
+
+3. **Model evaluation techniques**: Created comprehensive qualitative evaluation:
+   - Visual inspection reveals failure modes (misclassified regions, boundary errors)
+   - Confidence maps show model uncertainty
+   - Error maps highlight systematic mistakes
+   - Important complement to quantitative metrics
+
+4. **Debugging deep learning code**: Systematic approach to bug discovery:
+   - Check model architecture matches training configuration
+   - Verify all model components are being used
+   - Compare implementation to official documentation/papers
+   - Use visualization to understand model behavior
+
+5. **Performance expectations**: Initial results (31-33% mIoU) below target:
+   - Not necessarily bad - dataset may be harder than expected
+   - Bug discovery explains partial gap
+   - Multiple factors affect performance (architecture, hyperparameters, data)
+   - Iterative improvement is normal in deep learning
+
+### Next Steps
+
+**Immediate priority**: Retrain model with bug fix
+- Expected improvement: 32-35% mIoU (with proper aux classifier)
+- Same hyperparameters for fair comparison
+- Will take another ~2.5 hours
+
+**After retraining**:
+- Run qualitative evaluation on new model
+- Compare results with first attempt
+- Decide: acceptable baseline or tune hyperparameters?
+
+**Then proceed to Phase 4**: Simple Anomaly Detection
+- Implement Standardized Max Logits method
+- No retraining required
+- Expected test AUPR: 15-25%
+
+### Code Snippets to Remember
+
+#### Proper Auxiliary Classifier Setup
+```python
+# Model initialization (CORRECT)
+model = deeplabv3_resnet50(weights='DEFAULT')
+model.classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)  # Main classifier
+model.aux_classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)  # Auxiliary classifier (IMPORTANT!)
+
+# Training loop (CORRECT)
+output_dict = model(images)
+main_output = output_dict['out']
+aux_output = output_dict['aux']
+
+main_loss = loss_fn(main_output, masks)
+aux_loss = loss_fn(aux_output, masks)
+loss = main_loss + 0.4 * aux_loss  # Weighted combination
+
+# Inference (CORRECT)
+model.eval()
+with torch.no_grad():
+    output = model(images)['out']  # Only use main output, ignore aux
+```
+
+#### Loading Model with Auxiliary Classifier
+```python
+# If model was trained with aux_classifier but you only need main output
+model.load_state_dict(state_dict, strict=False)  # Ignores aux_classifier keys
+```
+
+### Saved Artifacts
+
+**Model checkpoints:**
+- `best_deeplabv3_streethazards.pth` - 168 MB, validation mIoU 31-33%
+
+**Visualizations:**
+- `assets/qualitative_eval/validation/` - 10 validation sample predictions
+- `assets/qualitative_eval/test/` - 10 test sample predictions (with anomalies)
+- `assets/qualitative_eval/validation_comparison_grid.png` - Overview of validation results
+- `assets/qualitative_eval/test_comparison_grid.png` - Overview of test results
+
+**Logs:**
+- `runs/streethazards_experiment/` - TensorBoard logs (30 epochs)
+
+### Time Tracking
+- Data pipeline setup: 2 hours (Day 1)
+- Model implementation: 1 hour
+- First training run: 2.5 hours
+- Qualitative evaluation: 0.5 hours
+- Bug discovery & fix: 0.5 hours
+- **Total so far**: ~6.5 / 50 hours
+
+---
+
 *Last updated: 2025-11-04*

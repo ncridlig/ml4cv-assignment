@@ -1,1 +1,27 @@
-numpy==2.1.3
+# Use PyTorch CUDA 12.9 wheels
+--extra-index-url https://download.pytorch.org/whl/cu129
+
+# Core PyTorch packages
+torch
+torchvision
+torchaudio
+
+# Common ML / data processing libraries
+numpy
+pandas
+scikit-learn
+matplotlib
+seaborn
+opencv-python
+tqdm
+
+# Optional: for dataset handling / transformations
+Pillow
+
+# Optional: for Jupyter notebooks
+jupyter
+notebook
+
+# Optional: for progress bars and logging
+rich
+tensorboard
