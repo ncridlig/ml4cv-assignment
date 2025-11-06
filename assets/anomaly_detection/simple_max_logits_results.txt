@@ -1,0 +1,15 @@
+============================================================
+SIMPLE MAX LOGITS ANOMALY DETECTION RESULTS
+============================================================
+
+Model: models/best_deeplabv3_streethazards_11_52_04-11-25_mIoU_3757.pth
+Test set: StreetHazards (1500 images)
+Anomaly class: 13
+Max pixels for evaluation: 1,000,000 (random subsampling)
+Random seed: 42 (for reproducibility)
+
+RESULTS:
+  AUROC: 0.8761
+  AUPR:  0.0619
+  F1:    0.1198
+  Optimal Threshold: -1.4834

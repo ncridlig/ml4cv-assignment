@@ -1,0 +1,1 @@
+- Always run python using the virtual enviroment located in .venv, otherwise not are requirments are installed.

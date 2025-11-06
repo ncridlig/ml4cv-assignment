@@ -1,26 +1,25 @@
 """
 Simple Max Logits Anomaly Detection
-Extracts only the Simple Max Logits method from the full script.
 """
 
 import torch
 import numpy as np
-from pathlib import Path
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, roc_curve
 from torch.utils.data import DataLoader
 from dataloader import StreetHazardsDataset, get_transforms
 from utils.model_utils import load_model
-
-# -----------------------------
-# CONFIG
-# -----------------------------
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-MODEL_PATH = 'models/best_deeplabv3_streethazards_11_52_04-11-25_mIoU_3757.pth'
-NUM_CLASSES = 13
-ANOMALY_CLASS_IDX = 13
-OUTPUT_DIR = Path('assets/anomaly_detection')
-MAX_PIXELS = 1_000_000  # Subsample to this many pixels for evaluation (reduces memory usage)
+from config import (
+    DEVICE,
+    MODEL_PATH,
+    NUM_CLASSES,
+    ANOMALY_CLASS_IDX,
+    OUTPUT_DIR_ANOMALY as OUTPUT_DIR,
+    MAX_PIXELS_EVALUATION as MAX_PIXELS,
+    RANDOM_SEED,
+    IMAGE_SIZE,
+    TEST_ROOT
+)
 
 print("="*60)
 print("SIMPLE MAX LOGITS ANOMALY DETECTION")
@@ -82,7 +81,7 @@ def detect_anomalies_simple_max_logits(model, dataloader, device):
     # Random subsampling if needed (for memory efficiency)
     if total_pixels > MAX_PIXELS:
         print(f"\nSubsampling {MAX_PIXELS:,} pixels from {total_pixels:,} (ratio: {MAX_PIXELS/total_pixels:.2%})")
-        np.random.seed(42)  # For reproducibility
+        np.random.seed(RANDOM_SEED)  # For reproducibility
         indices = np.random.choice(total_pixels, size=MAX_PIXELS, replace=False)
         all_anomaly_scores = all_anomaly_scores[indices]
         all_ground_truth = all_ground_truth[indices]
@@ -158,10 +157,10 @@ if __name__ == "__main__":
 
     # Load test dataset
     print("\nLoading test dataset...")
-    val_test_transform, val_test_mask_transform = get_transforms(512, is_training=False)
+    val_test_transform, val_test_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
 
     test_dataset = StreetHazardsDataset(
-        root_dir='streethazards_test/test',
+        root_dir=TEST_ROOT,
         split='test',
         transform=val_test_transform,
         mask_transform=val_test_mask_transform
@@ -185,7 +184,7 @@ if __name__ == "__main__":
         f.write(f"Test set: StreetHazards (1500 images)\n")
         f.write(f"Anomaly class: {ANOMALY_CLASS_IDX}\n")
         f.write(f"Max pixels for evaluation: {MAX_PIXELS:,} (random subsampling)\n")
-        f.write(f"Random seed: 42 (for reproducibility)\n\n")
+        f.write(f"Random seed: {RANDOM_SEED} (for reproducibility)\n\n")
         f.write("RESULTS:\n")
         f.write(f"  AUROC: {results_simple['auroc']:.4f}\n")
         f.write(f"  AUPR:  {results_simple['aupr']:.4f}\n")

@@ -10,40 +10,37 @@ import os
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 from dataloader import StreetHazardsDataset, get_transforms
+from config import (
+    DEVICE,
+    NUM_CLASSES,
+    IGNORE_INDEX,
+    BATCH_SIZE,
+    LEARNING_RATE as LR,
+    EPOCHS,
+    PRINT_FREQ,
+    NUM_WORKERS,
+    IMAGE_SIZE,
+    TRAIN_ROOT
+)
 
-# -----------------------------
-# CONFIG
-# -----------------------------
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-NUM_CLASSES = 14           # 0–12 normal, 13 = anomaly (ignored in training)
-IGNORE_INDEX = 13
-BATCH_SIZE = 4
-LR = 1e-4
-EPOCHS = 20
-PRINT_FREQ = 500
-NUM_WORKERS = 4
+# Note: NUM_CLASSES in training is 14 (includes anomaly class), but we ignore it
+NUM_CLASSES = 14  # Override: 0-12 normal, 13 = anomaly (ignored in training)
 
 # -----------------------------
 # DATASETS
 # -----------------------------
-train_transform, train_mask_transform = get_transforms(512, is_training=True)
-val_test_transform, val_test_mask_transform = get_transforms(512, is_training=False)
+train_transform, train_mask_transform = get_transforms(IMAGE_SIZE, is_training=True)
+val_test_transform, val_test_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
 
 train_dataset = StreetHazardsDataset(
-    root_dir='streethazards_train/train',
+    root_dir=TRAIN_ROOT,
     split='training',
-    transform=train_transform,         
-    mask_transform=train_mask_transform      
+    transform=train_transform,
+    mask_transform=train_mask_transform
 )
 val_dataset = StreetHazardsDataset(
-    root_dir='streethazards_train/train',
+    root_dir=TRAIN_ROOT,
     split='validation',
-    transform=val_test_transform,
-    mask_transform=val_test_mask_transform
-)
-test_dataset = StreetHazardsDataset(
-    root_dir='streethazards_test/test',
-    split='test',
     transform=val_test_transform,
     mask_transform=val_test_mask_transform
 )
