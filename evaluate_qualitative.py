@@ -3,7 +3,6 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from torchvision.models.segmentation import deeplabv3_resnet50
 from dataloader import (
     StreetHazardsDataset,
     get_transforms,
@@ -11,37 +10,15 @@ from dataloader import (
     CLASS_COLORS,
     mask_to_rgb
 )
+from utils.model_utils import load_model
 
 # -----------------------------
 # CONFIG
 # -----------------------------
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-MODEL_PATH = 'best_deeplabv3_streethazards.pth'
+MODEL_PATH = 'models/best_deeplabv3_streethazards_11_52_04-11-25_mIoU_3757.pth'
 NUM_SAMPLES = 10  # Number of samples to visualize per split
 OUTPUT_DIR = Path('assets/qualitative_eval')
-
-# -----------------------------
-# LOAD MODEL
-# -----------------------------
-def load_model(model_path, device):
-    """Load trained DeepLabV3+ model."""
-    print(f"Loading model from {model_path}...")
-    model = deeplabv3_resnet50(weights=None)
-    model.classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)
-
-    # DeepLabV3 also has an auxiliary classifier - we need to handle it
-    # The aux_classifier was trained but we don't use it during inference
-
-    # Load checkpoint
-    state_dict = torch.load(model_path, map_location=device)
-
-    # Load with strict=False to ignore aux_classifier keys
-    model.load_state_dict(state_dict, strict=False)
-    model = model.to(device)
-    model.eval()
-
-    print(f"Model loaded successfully on {device}")
-    return model
 
 # -----------------------------
 # INFERENCE
