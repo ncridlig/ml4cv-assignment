@@ -14,7 +14,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # =============================================================================
 # MODEL CONFIGURATION
 # =============================================================================
-MODEL_PATH = 'models/best_deeplabv3_streethazards_11_52_04-11-25_mIoU_3757.pth'
+MODEL_PATH = 'models/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth' # 'models/best_deeplabv3_streethazards_11_52_04-11-25_mIoU_3757.pth'
 MODEL_ARCHITECTURE = 'deeplabv3_resnet50'  # Options: deeplabv3_resnet50, deeplabv3_resnet101, fcn_resnet50
 
 # =============================================================================
@@ -25,7 +25,7 @@ TRAIN_ROOT = 'streethazards_train/train'
 TEST_ROOT = 'streethazards_test/test'
 
 # Image dimensions
-IMAGE_SIZE = 512
+IMAGE_SIZE = (512, 512) # (1280, 720) is streethazards original resolution # 512 is the best for resnet50/101
 
 # =============================================================================
 # CLASS CONFIGURATION
@@ -35,11 +35,11 @@ ANOMALY_CLASS_IDX = 13  # Class 13 is anomaly (only in test set)
 IGNORE_INDEX = 13  # Ignore anomaly class during training
 
 # =============================================================================
-# TRAINING HYPERPARAMETERS (for deeplabv3plus.py)
+# TRAINING HYPERPARAMETERS
 # =============================================================================
-BATCH_SIZE = 4
+BATCH_SIZE = 4  # Good for batch norm stability
 LEARNING_RATE = 1e-4
-EPOCHS = 20
+EPOCHS = 40  # Increased for stronger augmentation (was 15)
 NUM_WORKERS = 4
 PRINT_FREQ = 500  # Print training stats every N iterations
 

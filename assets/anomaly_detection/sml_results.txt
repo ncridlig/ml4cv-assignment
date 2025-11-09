@@ -1,8 +1,61 @@
-============================================================
-STANDARDIZED MAX LOGITS (SML) RESULTS
-============================================================
+================================================================================
+STANDARDIZED MAX LOGITS (SML) ANOMALY DETECTION RESULTS
+================================================================================
 
-AUROC: 0.7837
-AUPR:  0.0370
-F1:    0.0749
-Threshold: 1.5674
+CONFIGURATION
+--------------------------------------------------------------------------------
+Model: models/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth
+Test set: StreetHazards (1500 images)
+Anomaly class: 13
+Max pixels for evaluation: 1,000,000 (random subsampling)
+Random seed: 42 (for reproducibility)
+
+METHOD DESCRIPTION
+--------------------------------------------------------------------------------
+SML normalizes max logits by class-specific statistics (mean and std).
+This accounts for different confidence levels across classes.
+Formula: SML(x) = (max_logit(x) - mean_c) / std_c
+where c is the predicted class.
+
+RESULTS
+--------------------------------------------------------------------------------
+AUROC: 0.8025 (80.25%)
+AUPR:  0.0541 (5.41%)
+FPR95: 0.8391 (83.91%)
+F1:    0.1217 (12.17%)
+Optimal Threshold: 1.9199
+
+BASELINE COMPARISON (Authors' Results)
+--------------------------------------------------------------------------------
+Metric          Your Model        Baseline      Difference
+--------------------------------------------------------------------------------
+FPR95               83.91%          26.50%         +57.41%
+AUROC               80.25%          89.30%          -9.05%
+AUPR                 5.41%          10.60%          -5.19%
+
+METRIC EXPLANATIONS
+--------------------------------------------------------------------------------
+AUROC (Area Under ROC Curve):
+  Measures the model's ability to rank anomaly scores correctly.
+  Range: 0.5 (random) to 1.0 (perfect)
+  Interpretation: Overall ranking quality across all thresholds.
+
+AUPR (Area Under Precision-Recall Curve):
+  Primary metric for imbalanced anomaly detection.
+  Better than AUROC for datasets with rare anomalies (<2%).
+  Interpretation: Trade-off between precision and recall.
+
+FPR95 (False Positive Rate at 95% True Positive Rate):
+  Answers: 'To detect 95% of anomalies, what % of normal pixels
+  will be incorrectly flagged as anomalies?'
+  Lower is better (fewer false alarms at high recall).
+  Important for safety-critical applications (autonomous driving).
+  Your result: 83.9% of normal pixels are false alarms
+               to achieve 95% anomaly detection.
+
+F1 Score:
+  Harmonic mean of precision and recall at optimal threshold.
+  Balances false positives and false negatives.
+  Interpretation: Overall detection quality at best operating point.
+
+================================================================================

@@ -1,8 +1,9 @@
 """
-Simple Max Logits Anomaly Detection
+Maximum Softmax Probability (MSP) Anomaly Detection
 """
 
 import torch
+import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, roc_curve
@@ -22,7 +23,7 @@ from config import (
 )
 
 print("="*60)
-print("SIMPLE MAX LOGITS ANOMALY DETECTION")
+print("MAXIMUM SOFTMAX PROBABILITY (MSP) ANOMALY DETECTION")
 print("="*60)
 print(f"Device: {DEVICE}")
 print(f"Model: {MODEL_PATH}")
@@ -33,15 +34,19 @@ print(f"Max pixels for evaluation: {MAX_PIXELS:,} (random subsampling)")
 # ANOMALY DETECTION METHOD
 # -----------------------------
 @torch.no_grad()
-def detect_anomalies_simple_max_logits(model, dataloader, device):
+def detect_anomalies_msp(model, dataloader, device):
     """
-    Method: Simple Max Logits
-    anomaly_score[i] = -max(logits[i])
+    Method: Maximum Softmax Probability (MSP)
+    anomaly_score[i] = -max(softmax(logits[i]))
 
-    Lower max logit = higher anomaly score
+    Lower max probability = higher anomaly score
+
+    Key difference from Max Logits:
+    - MSP considers ALL logits through softmax normalization
+    - Max Logits only looks at the maximum logit value
     """
     print(f"\n{'='*60}")
-    print("METHOD: SIMPLE MAX LOGITS")
+    print("METHOD: MAXIMUM SOFTMAX PROBABILITY (MSP)")
     print(f"{'='*60}")
 
     model.eval()
@@ -49,19 +54,22 @@ def detect_anomalies_simple_max_logits(model, dataloader, device):
     all_anomaly_scores = []
     all_ground_truth = []
 
-    for images, masks, _ in tqdm(dataloader, desc="Simple Max Logits"):
+    for images, masks, _ in tqdm(dataloader, desc="MSP"):
         images = images.to(device)
         masks = masks.numpy()  # (B, H, W)
 
         # Get predictions
         output = model(images)['out']  # (B, 13, H, W)
 
-        # Compute max logits
-        max_logits, _ = output.max(dim=1)  # (B, H, W)
-        max_logits = max_logits.cpu().numpy()
+        # Apply softmax to get probabilities
+        probs = F.softmax(output, dim=1)  # (B, 13, H, W)
 
-        # Anomaly score = negative max logit (use float16 for memory efficiency)
-        anomaly_scores = (-max_logits).astype(np.float16)  # (B, H, W)
+        # Compute max softmax probability
+        max_probs, _ = probs.max(dim=1)  # (B, H, W)
+        max_probs = max_probs.cpu().numpy()
+
+        # Anomaly score = negative max probability (use float16 for memory efficiency)
+        anomaly_scores = (-max_probs).astype(np.float16)  # (B, H, W)
 
         # Ground truth: 1 if anomaly (class 13), 0 otherwise
         ground_truth = (masks == ANOMALY_CLASS_IDX).astype(int)
@@ -99,9 +107,8 @@ def evaluate_anomaly_detection(anomaly_scores, ground_truth, method_name):
     Evaluate anomaly detection performance.
 
     Metrics:
-    - AUROC: Area Under ROC Curve (overall ranking quality)
-    - AUPR: Area Under Precision-Recall Curve (primary metric for imbalanced data)
-    - FPR95: False Positive Rate at 95% True Positive Rate (cost of high-recall operation)
+    - AUROC: Area Under ROC Curve
+    - AUPR: Area Under Precision-Recall Curve (primary metric)
     """
     print(f"\n{'='*60}")
     print(f"EVALUATION: {method_name}")
@@ -117,24 +124,13 @@ def evaluate_anomaly_detection(anomaly_scores, ground_truth, method_name):
     aupr = average_precision_score(ground_truth, anomaly_scores)
 
     print(f"AUROC: {auroc:.4f} (0.5 = random, 1.0 = perfect)")
-    print(f"AUPR:  {aupr:.4f} (primary metric for imbalanced data)")
+    print(f"AUPR:  {aupr:.4f} (primary metric)")
 
     # Compute precision-recall curve
     precision, recall, pr_thresholds = precision_recall_curve(ground_truth, anomaly_scores)
 
     # Compute ROC curve
     fpr, tpr, roc_thresholds = roc_curve(ground_truth, anomaly_scores)
-
-    # Calculate FPR95 (False Positive Rate at 95% True Positive Rate)
-    target_tpr = 0.95
-    idx_tpr95 = np.argmin(np.abs(tpr - target_tpr))
-    fpr95 = fpr[idx_tpr95]
-    actual_tpr = tpr[idx_tpr95]
-
-    print(f"FPR95: {fpr95:.4f} ({fpr95*100:.2f}%)")
-    print(f"  → False Positive Rate when TPR = {actual_tpr:.4f}")
-    print(f"  → To detect {actual_tpr*100:.1f}% of anomalies,")
-    print(f"     {fpr95*100:.1f}% of normal pixels are false alarms")
 
     # Find optimal threshold (max F1 score)
     f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)
@@ -149,6 +145,17 @@ def evaluate_anomaly_detection(anomaly_scores, ground_truth, method_name):
     print(f"  Precision: {optimal_precision:.4f}")
     print(f"  Recall:    {optimal_recall:.4f}")
     print(f"  F1 Score:  {optimal_f1:.4f}")
+
+    # Calculate FPR95 (False Positive Rate at 95% True Positive Rate)
+    target_tpr = 0.95
+    idx_tpr95 = np.argmin(np.abs(tpr - target_tpr))
+    fpr95 = fpr[idx_tpr95]
+    actual_tpr = tpr[idx_tpr95]
+
+    print(f"\nFPR95: {fpr95:.4f} ({fpr95*100:.2f}%)")
+    print(f"  → False Positive Rate when TPR = {actual_tpr:.4f}")
+    print(f"  → To detect {actual_tpr*100:.1f}% of anomalies,")
+    print(f"     {fpr95*100:.1f}% of normal pixels are false alarms")
 
     # Baseline comparison (authors' results from StreetHazards paper)
     baseline_fpr95 = 0.265
@@ -201,14 +208,14 @@ if __name__ == "__main__":
     print(f"Loaded {len(test_dataset)} test samples")
 
     # Run anomaly detection
-    scores_simple, gt_simple = detect_anomalies_simple_max_logits(model, test_loader, DEVICE)
-    results_simple = evaluate_anomaly_detection(scores_simple, gt_simple, "Simple Max Logits")
+    scores_msp, gt_msp = detect_anomalies_msp(model, test_loader, DEVICE)
+    results_msp = evaluate_anomaly_detection(scores_msp, gt_msp, "Maximum Softmax Probability")
 
     # Save results summary
-    summary_path = OUTPUT_DIR / 'simple_max_logits_results.txt'
+    summary_path = OUTPUT_DIR / 'maximum_softmax_probability_results.txt'
     with open(summary_path, 'w') as f:
         f.write("="*80 + "\n")
-        f.write("SIMPLE MAX LOGITS ANOMALY DETECTION RESULTS\n")
+        f.write("MAXIMUM SOFTMAX PROBABILITY (MSP) ANOMALY DETECTION RESULTS\n")
         f.write("="*80 + "\n\n")
 
         f.write("CONFIGURATION\n")
@@ -219,27 +226,34 @@ if __name__ == "__main__":
         f.write(f"Max pixels for evaluation: {MAX_PIXELS:,} (random subsampling)\n")
         f.write(f"Random seed: {RANDOM_SEED} (for reproducibility)\n\n")
 
+        f.write("METHOD DESCRIPTION\n")
+        f.write("-"*80 + "\n")
+        f.write("MSP uses softmax-normalized probabilities instead of raw logits.\n")
+        f.write("Unlike Max Logits which only considers the maximum logit,\n")
+        f.write("MSP considers ALL logits through the softmax denominator.\n")
+        f.write("This penalizes predictions where multiple classes have similar probabilities.\n\n")
+
         f.write("RESULTS\n")
         f.write("-"*80 + "\n")
-        f.write(f"AUROC: {results_simple['auroc']:.4f} ({results_simple['auroc']*100:.2f}%)\n")
-        f.write(f"AUPR:  {results_simple['aupr']:.4f} ({results_simple['aupr']*100:.2f}%)\n")
-        f.write(f"FPR95: {results_simple['fpr95']:.4f} ({results_simple['fpr95']*100:.2f}%)\n")
-        f.write(f"F1:    {results_simple['optimal_f1']:.4f} ({results_simple['optimal_f1']*100:.2f}%)\n")
-        f.write(f"Optimal Threshold: {results_simple['optimal_threshold']:.4f}\n\n")
+        f.write(f"AUROC: {results_msp['auroc']:.4f} ({results_msp['auroc']*100:.2f}%)\n")
+        f.write(f"AUPR:  {results_msp['aupr']:.4f} ({results_msp['aupr']*100:.2f}%)\n")
+        f.write(f"FPR95: {results_msp['fpr95']:.4f} ({results_msp['fpr95']*100:.2f}%)\n")
+        f.write(f"F1:    {results_msp['optimal_f1']:.4f} ({results_msp['optimal_f1']*100:.2f}%)\n")
+        f.write(f"Optimal Threshold: {results_msp['optimal_threshold']:.4f}\n\n")
 
         f.write("BASELINE COMPARISON (Authors' Results)\n")
         f.write("-"*80 + "\n")
         f.write(f"{'Metric':<10} {'Your Model':>15} {'Baseline':>15} {'Difference':>15}\n")
         f.write(f"{'-'*80}\n")
-        f.write(f"{'FPR95':<10} {results_simple['fpr95']*100:>14.2f}% "
-                f"{results_simple['baseline_fpr95']*100:>14.2f}% "
-                f"{(results_simple['fpr95']-results_simple['baseline_fpr95'])*100:>+14.2f}%\n")
-        f.write(f"{'AUROC':<10} {results_simple['auroc']*100:>14.2f}% "
-                f"{results_simple['baseline_auroc']*100:>14.2f}% "
-                f"{(results_simple['auroc']-results_simple['baseline_auroc'])*100:>+14.2f}%\n")
-        f.write(f"{'AUPR':<10} {results_simple['aupr']*100:>14.2f}% "
-                f"{results_simple['baseline_aupr']*100:>14.2f}% "
-                f"{(results_simple['aupr']-results_simple['baseline_aupr'])*100:>+14.2f}%\n\n")
+        f.write(f"{'FPR95':<10} {results_msp['fpr95']*100:>14.2f}% "
+                f"{results_msp['baseline_fpr95']*100:>14.2f}% "
+                f"{(results_msp['fpr95']-results_msp['baseline_fpr95'])*100:>+14.2f}%\n")
+        f.write(f"{'AUROC':<10} {results_msp['auroc']*100:>14.2f}% "
+                f"{results_msp['baseline_auroc']*100:>14.2f}% "
+                f"{(results_msp['auroc']-results_msp['baseline_auroc'])*100:>+14.2f}%\n")
+        f.write(f"{'AUPR':<10} {results_msp['aupr']*100:>14.2f}% "
+                f"{results_msp['baseline_aupr']*100:>14.2f}% "
+                f"{(results_msp['aupr']-results_msp['baseline_aupr'])*100:>+14.2f}%\n\n")
 
         f.write("METRIC EXPLANATIONS\n")
         f.write("-"*80 + "\n")
@@ -258,7 +272,7 @@ if __name__ == "__main__":
         f.write("  will be incorrectly flagged as anomalies?'\n")
         f.write("  Lower is better (fewer false alarms at high recall).\n")
         f.write("  Important for safety-critical applications (autonomous driving).\n")
-        f.write(f"  Your result: {results_simple['fpr95']*100:.1f}% of normal pixels are false alarms\n")
+        f.write(f"  Your result: {results_msp['fpr95']*100:.1f}% of normal pixels are false alarms\n")
         f.write(f"               to achieve 95% anomaly detection.\n\n")
 
         f.write("F1 Score:\n")
@@ -271,6 +285,6 @@ if __name__ == "__main__":
     print(f"\n✅ Results summary saved: {summary_path}")
 
     print(f"\n{'='*60}")
-    print("✅ SIMPLE MAX LOGITS COMPLETE!")
+    print("✅ MAXIMUM SOFTMAX PROBABILITY COMPLETE!")
     print(f"{'='*60}")
     print(f"Results saved to: {OUTPUT_DIR}/")

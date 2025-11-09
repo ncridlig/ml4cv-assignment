@@ -7,6 +7,18 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import glob
+from config import (
+    DEVICE,
+    NUM_CLASSES,
+    IGNORE_INDEX,
+    BATCH_SIZE,
+    LEARNING_RATE as LR,
+    EPOCHS,
+    PRINT_FREQ,
+    NUM_WORKERS,
+    IMAGE_SIZE,
+    TRAIN_ROOT
+)
 
 # -----------------------------
 # Class definitions for StreetHazards
@@ -49,7 +61,6 @@ CLASS_COLORS = np.array([
 ], dtype=np.uint8)
 
 # Constants
-NUM_CLASSES = 14  # Total classes including anomaly (0-13)
 NUM_KNOWN_CLASSES = 13  # Known classes in training (0-12)
 ANOMALY_CLASS_IDX = 13  # Index of anomaly class (ONLY in test)
 
@@ -118,18 +129,49 @@ class StreetHazardsDataset(Dataset):
 
         # Convert mask to numpy and remap from 1-indexed to 0-indexed
         mask_array = np.array(mask, dtype=np.int64) - 1
+        mask_pil = Image.fromarray(mask_array.astype(np.uint8))
 
         # Apply transformations
-        if self.transform:
-            image = self.transform(image)
+        if self.transform is None and self.mask_transform is None:
+            # Training mode: apply joint transforms (synchronized augmentations)
 
-        if self.mask_transform:
-            # Convert to PIL for transforms, then back to array
-            mask = Image.fromarray(mask_array.astype(np.uint8))
-            mask = self.mask_transform(mask)
+            # 1. Multi-scale random crop (KEY AUGMENTATION)
+            # Following DeepLabV3+ paper: variable crop sizes with scale range [0.5, 2.0]
+            scale_crop = JointRandomScaleCrop(output_size=IMAGE_SIZE, scale_range=(0.5, 2.0), base_crop_size=512)
+            image, mask_pil = scale_crop(image, mask_pil)
+
+            # 2. Random rotation (±10 degrees) introduces black edges
+            # rotation = JointRandomRotation(degrees=10)
+            # image, mask_pil = rotation(image, mask_pil)
+
+            # 3. Random horizontal flip
+            flip = JointRandomHorizontalFlip(p=0.5)
+            image, mask_pil = flip(image, mask_pil)
+
+            # 4. Image-only augmentations
+            # Color jitter (image only)
+            image = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1)(image)
+
+            # Gaussian blur (image only, simulate motion/focus blur)
+            if np.random.random() < 0.5:
+                image = transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))(image)
+
+            # Convert to tensor and normalize
+            image = transforms.ToTensor()(image)
+            image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
+
+            # Convert mask to tensor
+            mask = torch.from_numpy(np.array(mask_pil, dtype=np.int64))
+
         else:
-            # Convert mask to tensor (keep as long for class indices)
-            mask = torch.from_numpy(mask_array)
+            # Validation/test mode: use standard transforms
+            if self.transform:
+                image = self.transform(image)
+
+            if self.mask_transform:
+                mask = self.mask_transform(mask_pil)
+            else:
+                mask = torch.from_numpy(mask_array)
 
         return image, mask, img_path
 
@@ -149,42 +191,137 @@ class StreetHazardsDataset(Dataset):
 
 
 # -----------------------------
+# Custom Synchronized Transforms
+# -----------------------------
+class JointRandomHorizontalFlip:
+    """Apply random horizontal flip to both image and mask."""
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, image, mask):
+        if np.random.random() < self.p:
+            image = transforms.functional.hflip(image)
+            mask = transforms.functional.hflip(mask)
+        return image, mask
+
+
+class JointRandomRotation:
+    """Apply random rotation to both image and mask."""
+    def __init__(self, degrees=10):
+        self.degrees = degrees
+
+    def __call__(self, image, mask):
+        angle = np.random.uniform(-self.degrees, self.degrees)
+        image = transforms.functional.rotate(image, angle, interpolation=transforms.InterpolationMode.BILINEAR)
+        mask = transforms.functional.rotate(mask, angle, interpolation=transforms.InterpolationMode.NEAREST)
+        return image, mask
+
+
+class JointRandomScaleCrop:
+    """
+    Multi-scale training following DeepLabV3+ paper literally.
+
+    Paper approach:
+    1. Random scale in range [0.5, 2.0]
+    2. Random crop with size proportional to scale (variable crop size)
+    3. Resize crop to fixed output_size for batching
+
+    This avoids padding:
+    - Scale 0.5x: crop ~256x256, resize to 512x512 (zooms in, sees fine details)
+    - Scale 1.0x: crop ~512x512, resize to 512x512 (normal view)
+    - Scale 2.0x: crop ~1024x1024, resize to 512x512 (zooms out, sees context)
+
+    No black padding needed because crop size adapts to scale!
+    """
+    def __init__(self, output_size=(512, 512), scale_range=(0.5, 2.0), base_crop_size=512):
+        self.output_size = output_size  # Fixed size for batching (512x512)
+        self.scale_range = scale_range
+        self.base_crop_size = base_crop_size  # Base crop size at scale=1.0
+
+    def __call__(self, image, mask):
+        # Original size
+        w, h = image.size  # StreetHazards: 1280×720
+
+        # Random scale factor
+        scale = np.random.uniform(self.scale_range[0], self.scale_range[1])
+
+        # Scaled image size
+        scaled_h = int(h * scale)
+        scaled_w = int(w * scale)
+
+        # Resize to scaled size
+        image = transforms.functional.resize(image, (scaled_h, scaled_w),
+                                            interpolation=transforms.InterpolationMode.BILINEAR)
+        mask = transforms.functional.resize(mask, (scaled_h, scaled_w),
+                                           interpolation=transforms.InterpolationMode.NEAREST)
+
+        # Variable crop size: proportional to scale
+        # At scale=0.5: crop_size = 256
+        # At scale=1.0: crop_size = 512
+        # At scale=2.0: crop_size = 1024
+        crop_size = int(self.base_crop_size * scale)
+        crop_size = min(crop_size, scaled_h, scaled_w)  # Don't exceed image bounds
+
+        # Random crop of variable size
+        if scaled_h > crop_size:
+            top = np.random.randint(0, scaled_h - crop_size + 1)
+        else:
+            top = 0
+
+        if scaled_w > crop_size:
+            left = np.random.randint(0, scaled_w - crop_size + 1)
+        else:
+            left = 0
+
+        image = transforms.functional.crop(image, top, left, crop_size, crop_size)
+        mask = transforms.functional.crop(mask, top, left, crop_size, crop_size)
+
+        # Resize crop to fixed output size for batching
+        image = transforms.functional.resize(image, self.output_size,
+                                            interpolation=transforms.InterpolationMode.BILINEAR)
+        mask = transforms.functional.resize(mask, self.output_size,
+                                           interpolation=transforms.InterpolationMode.NEAREST)
+
+        return image, mask
+
+
+# -----------------------------
 # Transformations
 # -----------------------------
-def get_transforms(image_size=512, is_training=True):
+def get_transforms(image_size=(512, 512), is_training=True):
     """
-    Get image and mask transforms.
+    Get image and mask transforms with multi-scale training support.
 
     Args:
-        image_size: Target size for images
-        is_training: If True, apply data augmentation
+        image_size: Target size for images (default: 512x512)
+        is_training: If True, apply strong data augmentation including multi-scale
+
+    Returns:
+        image_transform: Transform for images
+        mask_transform: Transform for masks
+
+    Note: For training, we use custom joint transforms that apply the same
+          random transformations to both image and mask (flip, rotation, crop).
     """
     if is_training:
-        # Training transforms with augmentation
-        image_transform = transforms.Compose([
-            transforms.Resize((image_size, image_size)),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                               std=[0.229, 0.224, 0.225])
-        ])
+        # IMPORTANT: We return None for transforms and handle augmentation in __getitem__
+        # This allows synchronized transforms between image and mask
+        return None, None
     else:
         # Validation/test transforms (no augmentation)
         image_transform = transforms.Compose([
-            transforms.Resize((image_size, image_size)),
+            transforms.Resize(image_size),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                std=[0.229, 0.224, 0.225])
         ])
 
-    # Mask transform (just resize, no normalization)
-    mask_transform = transforms.Compose([
-        transforms.Resize((image_size, image_size), interpolation=transforms.InterpolationMode.NEAREST),
-        transforms.Lambda(lambda x: torch.from_numpy(np.array(x, dtype=np.int64)))
-    ])
+        mask_transform = transforms.Compose([
+            transforms.Resize(image_size, interpolation=transforms.InterpolationMode.NEAREST),
+            transforms.Lambda(lambda x: torch.from_numpy(np.array(x, dtype=np.int64)))
+        ])
 
-    return image_transform, mask_transform
+        return image_transform, mask_transform
 
 
 # -----------------------------
@@ -317,7 +454,7 @@ def show_legend(save_path='assets/class_color_map.png'):
 # -----------------------------
 # DataLoader Factory Functions
 # -----------------------------
-def get_dataloaders(batch_size=8, num_workers=4, image_size=512):
+def get_dataloaders(batch_size=8, num_workers=4, image_size=IMAGE_SIZE):
     """
     Create train, validation, and test dataloaders.
 
@@ -391,7 +528,8 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Create datasets
-    train_transform, train_mask_transform = get_transforms(512, is_training=False)
+    train_transform, train_mask_transform = get_transforms(IMAGE_SIZE, is_training=True)
+    val_test_transform, val_test_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
 
     train_dataset = StreetHazardsDataset(
         root_dir='streethazards_train/train',
@@ -403,15 +541,15 @@ if __name__ == "__main__":
     val_dataset = StreetHazardsDataset(
         root_dir='streethazards_train/train',
         split='validation',
-        transform=train_transform,
-        mask_transform=train_mask_transform
+        transform=val_test_transform,
+        mask_transform=val_test_mask_transform
     )
 
     test_dataset = StreetHazardsDataset(
         root_dir='streethazards_test/test',
         split='test',
-        transform=train_transform,
-        mask_transform=train_mask_transform
+        transform=val_test_transform,
+        mask_transform=val_test_mask_transform
     )
 
     print(f"\nDataset sizes:")

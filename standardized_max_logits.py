@@ -138,28 +138,64 @@ def detect_anomalies_sml(model, dataloader, device, class_means, class_stds):
 # STEP 3 — EVALUATION
 # -----------------------------
 def evaluate_anomaly_detection(scores, gt):
-    """Compute AUROC, AUPR, F1, and optimal threshold."""
+    """Compute AUROC, AUPR, FPR95, F1, and optimal threshold."""
     print(f"\n{'='*60}\nEVALUATION: STANDARDIZED MAX LOGITS\n{'='*60}")
     valid = np.isfinite(scores)
     scores, gt = scores[valid], gt[valid]
 
     auroc = roc_auc_score(gt, scores)
     aupr = average_precision_score(gt, scores)
-    precision, recall, thresholds = precision_recall_curve(gt, scores)
+    precision, recall, pr_thresholds = precision_recall_curve(gt, scores)
 
+    # Compute ROC curve for FPR95
+    fpr, tpr, roc_thresholds = roc_curve(gt, scores)
+
+    # Calculate FPR95 (False Positive Rate at 95% True Positive Rate)
+    target_tpr = 0.95
+    idx_tpr95 = np.argmin(np.abs(tpr - target_tpr))
+    fpr95 = fpr[idx_tpr95]
+    actual_tpr = tpr[idx_tpr95]
+
+    # Find optimal threshold (max F1 score)
     f1 = 2 * (precision * recall) / (precision + recall + 1e-8)
     best_idx = np.argmax(f1[:-1])
-    best_thr = thresholds[best_idx]
+    best_thr = pr_thresholds[best_idx]
 
-    print(f"AUROC: {auroc:.4f} | AUPR: {aupr:.4f}")
+    print(f"AUROC: {auroc:.4f} ({auroc*100:.2f}%)")
+    print(f"AUPR:  {aupr:.4f} ({aupr*100:.2f}%)")
+    print(f"FPR95: {fpr95:.4f} ({fpr95*100:.2f}%)")
     print(f"Optimal F1: {f1[best_idx]:.4f} @ threshold={best_thr:.4f}")
+
+    print(f"\nFPR95 Interpretation:")
+    print(f"  → False Positive Rate when TPR = {actual_tpr:.4f}")
+    print(f"  → To detect {actual_tpr*100:.1f}% of anomalies,")
+    print(f"     {fpr95*100:.1f}% of normal pixels are false alarms")
+
+    # Baseline comparison (authors' results from StreetHazards paper)
+    baseline_fpr95 = 0.265
+    baseline_auroc = 0.893
+    baseline_aupr = 0.106
+
+    print(f"\n{'='*60}")
+    print(f"BASELINE COMPARISON (Authors' Results)")
+    print(f"{'='*60}")
+    print(f"{'Metric':<10} {'Your Model':>12} {'Baseline':>12} {'Difference':>12}")
+    print(f"{'-'*60}")
+    print(f"{'FPR95':<10} {fpr95*100:>11.2f}% {baseline_fpr95*100:>11.2f}% {(fpr95-baseline_fpr95)*100:>+11.2f}%")
+    print(f"{'AUROC':<10} {auroc*100:>11.2f}% {baseline_auroc*100:>11.2f}% {(auroc-baseline_auroc)*100:>+11.2f}%")
+    print(f"{'AUPR':<10} {aupr*100:>11.2f}% {baseline_aupr*100:>11.2f}% {(aupr-baseline_aupr)*100:>+11.2f}%")
+
     return {
         "auroc": auroc,
         "aupr": aupr,
+        "fpr95": fpr95,
         "f1": f1[best_idx],
         "threshold": best_thr,
         "precision": precision,
-        "recall": recall
+        "recall": recall,
+        "baseline_fpr95": baseline_fpr95,
+        "baseline_auroc": baseline_auroc,
+        "baseline_aupr": baseline_aupr
     }
 
 # -----------------------------
@@ -231,11 +267,72 @@ if __name__ == "__main__":
 
     summary_path = OUTPUT_DIR / "sml_results.txt"
     with open(summary_path, "w") as f:
-        f.write("="*60 + "\n")
-        f.write("STANDARDIZED MAX LOGITS (SML) RESULTS\n")
-        f.write("="*60 + "\n\n")
-        f.write(f"AUROC: {results['auroc']:.4f}\n")
-        f.write(f"AUPR:  {results['aupr']:.4f}\n")
-        f.write(f"F1:    {results['f1']:.4f}\n")
-        f.write(f"Threshold: {results['threshold']:.4f}\n")
+        f.write("="*80 + "\n")
+        f.write("STANDARDIZED MAX LOGITS (SML) ANOMALY DETECTION RESULTS\n")
+        f.write("="*80 + "\n\n")
+
+        f.write("CONFIGURATION\n")
+        f.write("-"*80 + "\n")
+        f.write(f"Model: {MODEL_PATH}\n")
+        f.write(f"Test set: StreetHazards (1500 images)\n")
+        f.write(f"Anomaly class: {ANOMALY_CLASS_IDX}\n")
+        f.write(f"Max pixels for evaluation: {MAX_PIXELS_EVALUATION:,} (random subsampling)\n")
+        f.write(f"Random seed: {RANDOM_SEED} (for reproducibility)\n\n")
+
+        f.write("METHOD DESCRIPTION\n")
+        f.write("-"*80 + "\n")
+        f.write("SML normalizes max logits by class-specific statistics (mean and std).\n")
+        f.write("This accounts for different confidence levels across classes.\n")
+        f.write("Formula: SML(x) = (max_logit(x) - mean_c) / std_c\n")
+        f.write("where c is the predicted class.\n\n")
+
+        f.write("RESULTS\n")
+        f.write("-"*80 + "\n")
+        f.write(f"AUROC: {results['auroc']:.4f} ({results['auroc']*100:.2f}%)\n")
+        f.write(f"AUPR:  {results['aupr']:.4f} ({results['aupr']*100:.2f}%)\n")
+        f.write(f"FPR95: {results['fpr95']:.4f} ({results['fpr95']*100:.2f}%)\n")
+        f.write(f"F1:    {results['f1']:.4f} ({results['f1']*100:.2f}%)\n")
+        f.write(f"Optimal Threshold: {results['threshold']:.4f}\n\n")
+
+        f.write("BASELINE COMPARISON (Authors' Results)\n")
+        f.write("-"*80 + "\n")
+        f.write(f"{'Metric':<10} {'Your Model':>15} {'Baseline':>15} {'Difference':>15}\n")
+        f.write(f"{'-'*80}\n")
+        f.write(f"{'FPR95':<10} {results['fpr95']*100:>14.2f}% "
+                f"{results['baseline_fpr95']*100:>14.2f}% "
+                f"{(results['fpr95']-results['baseline_fpr95'])*100:>+14.2f}%\n")
+        f.write(f"{'AUROC':<10} {results['auroc']*100:>14.2f}% "
+                f"{results['baseline_auroc']*100:>14.2f}% "
+                f"{(results['auroc']-results['baseline_auroc'])*100:>+14.2f}%\n")
+        f.write(f"{'AUPR':<10} {results['aupr']*100:>14.2f}% "
+                f"{results['baseline_aupr']*100:>14.2f}% "
+                f"{(results['aupr']-results['baseline_aupr'])*100:>+14.2f}%\n\n")
+
+        f.write("METRIC EXPLANATIONS\n")
+        f.write("-"*80 + "\n")
+        f.write("AUROC (Area Under ROC Curve):\n")
+        f.write("  Measures the model's ability to rank anomaly scores correctly.\n")
+        f.write("  Range: 0.5 (random) to 1.0 (perfect)\n")
+        f.write("  Interpretation: Overall ranking quality across all thresholds.\n\n")
+
+        f.write("AUPR (Area Under Precision-Recall Curve):\n")
+        f.write("  Primary metric for imbalanced anomaly detection.\n")
+        f.write("  Better than AUROC for datasets with rare anomalies (<2%).\n")
+        f.write("  Interpretation: Trade-off between precision and recall.\n\n")
+
+        f.write("FPR95 (False Positive Rate at 95% True Positive Rate):\n")
+        f.write("  Answers: 'To detect 95% of anomalies, what % of normal pixels\n")
+        f.write("  will be incorrectly flagged as anomalies?'\n")
+        f.write("  Lower is better (fewer false alarms at high recall).\n")
+        f.write("  Important for safety-critical applications (autonomous driving).\n")
+        f.write(f"  Your result: {results['fpr95']*100:.1f}% of normal pixels are false alarms\n")
+        f.write(f"               to achieve 95% anomaly detection.\n\n")
+
+        f.write("F1 Score:\n")
+        f.write("  Harmonic mean of precision and recall at optimal threshold.\n")
+        f.write("  Balances false positives and false negatives.\n")
+        f.write("  Interpretation: Overall detection quality at best operating point.\n\n")
+
+        f.write("="*80 + "\n")
+
     print(f"\n✅ Results summary saved: {summary_path}")
