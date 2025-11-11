@@ -23,7 +23,7 @@ import logging
 import sys
 from datetime import datetime
 
-from dataloader import StreetHazardsDataset, get_transforms
+from utils.dataloader import StreetHazardsDataset, get_transforms
 from utils.model_utils import load_model
 from config import (
     DEVICE,
@@ -158,8 +158,8 @@ def compute_class_statistics(model, train_loader, device, num_classes=13, layer_
             if mask.sum() > 0:
                 class_feats = features[mask]
                 # Subsample to avoid OOM (per class per batch)
-                if class_feats.shape[0] > 10000:
-                    idx = torch.randperm(class_feats.shape[0])[:10000]
+                if class_feats.shape[0] > 2000:
+                    idx = torch.randperm(class_feats.shape[0])[:2000]
                     class_feats = class_feats[idx]
                 class_features[c].append(class_feats.cpu())
 

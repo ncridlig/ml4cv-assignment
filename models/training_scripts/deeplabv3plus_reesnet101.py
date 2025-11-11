@@ -9,7 +9,7 @@ import numpy as np
 import os
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
-from dataloader import StreetHazardsDataset, get_transforms
+from utils.dataloader import StreetHazardsDataset, get_transforms
 from config import (
     DEVICE,
     NUM_CLASSES,
@@ -51,7 +51,7 @@ val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_w
 # -----------------------------
 # TENSORBOARD SETUP
 # -----------------------------
-writer = SummaryWriter(log_dir="runs/streethazards_experiment")
+writer = SummaryWriter(log_dir="models/runs/streethazards_experiment")
 
 # -----------------------------
 # MODEL
@@ -144,7 +144,7 @@ def validate(model, loader, loss_fn):
     return avg_iou
 
 
-def save_best_model(model, miou, best_miou, base_name="models/deeplabv3_resnet101"):
+def save_best_model(model, miou, best_miou, base_name="models/checkpoints/deeplabv3_resnet101"):
     """
     Save best model with timestamp in filename format: _HH_MM_DAY-MONTH-25
     Example: best_deeplabv3_streethazards_14_30_04-11-25.pth for Nov 4, 2025 at 14:30

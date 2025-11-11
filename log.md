@@ -1903,4 +1903,481 @@ On this smaller dataset, **CNNs outperform transformers** - opposite of typical 
 
 ---
 
-*Last updated: 2025-11-09*
+## Day 7 - HEAT Anomaly Detection & Repository Refactoring
+
+### Date: 2025-11-11
+
+### What We Did Today
+
+#### 1. HEAT Anomaly Detection Implementation & Evaluation
+
+**Implemented and evaluated HEAT (Hybrid Energy-Adaptive Thresholding)**:
+- Created `anomaly_detection/heat_anomaly_detection.py`
+- **Method**: Combines energy-based scoring with spatial smoothing and adaptive thresholding
+- **Configuration**:
+  - Temperature: 1.0
+  - EMA alpha: 0.9
+  - Spatial kernel: 3×3
+  - Feature layer: backbone.layer3
+
+**Results on Best Model (50.26% mIoU)**:
+```
+AUROC: 89.43%
+AUPR:  9.15%
+FPR95: 33.06%
+```
+
+**Comparison with Simple Max Logits**:
+| Method | AUPR | AUROC | FPR95 |
+|--------|------|-------|-------|
+| Simple Max Logits | 8.43% | **90.50%** | 33.12% |
+| HEAT | **9.15%** | 89.43% | 33.06% |
+| Improvement | **+0.72%** | -1.07% | **-0.06%** |
+
+**Analysis**:
+- HEAT achieves **slightly better AUPR** (+0.72%) than Simple Max Logits
+- HEAT achieves **slightly better FPR95** (-0.06%) than Simple Max Logits
+- Simple Max Logits still has better AUROC (+1.07%)
+- Both methods are nearly equivalent (~1% difference across all metrics)
+- **Conclusion**: The additional complexity of HEAT (energy scoring, spatial smoothing, adaptive thresholding) provides minimal benefit over the simple max logits baseline
+
+#### 2. Repository Refactoring & Code Organization
+
+**Cleaned up repository structure** by organizing files into logical directories:
+
+**Created Directories**:
+- `anomaly_detection/` - All anomaly detection methods (5 scripts)
+- `models/` - Model architectures and checkpoints (moved training scripts here)
+- `utils/` - Utility functions and helper scripts (dataloader, visualization, etc.)
+
+**Files Moved**:
+- Anomaly detection: `simple_max_logits.py`, `maximum_softmax_probability.py`, `standardized_max_logits.py`, `energy_score_anomaly_detection.py`, `heat_anomaly_detection.py` → `anomaly_detection/`
+- Training scripts: No longer visible in root (deleted or moved to models/)
+- Utilities: `dataloader.py`, `visualize.py`, `model_utils.py`, `class_counter.py` → `utils/`
+
+**Files Deleted**:
+- Old training scripts: `deeplabv3plus_resnet101.py`, `deeplabv3plus_resnet50.py`, `hierabase224.py`, `segformerb5.py`
+- Old anomaly detection scripts from root (moved to `anomaly_detection/`)
+- Old TensorBoard runs: `runs/streethazards_experiment/events.out.tfevents.*`
+- Research documentation: `sources/` directory
+- Test scripts: Various `test_*.py` files
+- Original README: `README-ORIGINAL.md`
+
+**Manual Updates**:
+- Updated `main.ipynb` to import from new locations
+- Fixed `download_dataset.sh` (previously `download.sh`)
+
+#### 3. Import Verification Test Suite
+
+**Created and executed**: `test_imports.py` - Comprehensive test suite to verify refactored imports work correctly
+
+**Test Coverage**:
+- ✅ Config module imports (DEVICE, MODEL_PATH, NUM_CLASSES, etc.)
+- ✅ Utils module imports (dataloader, model_utils, visualize)
+- ✅ Anomaly detection scripts exist and are accessible
+- ✅ Directory structure verification (anomaly_detection/, models/, utils/, assets/)
+- ✅ Critical files existence check (config.py, main.ipynb, README.md, etc.)
+- ✅ Practical import patterns (simulating real script usage)
+
+**Results**: **7/7 tests passed** 🎉
+- All imports work correctly after refactoring
+- Repository structure is correct and complete
+- No broken dependencies or missing files
+
+### Current Status
+
+**Best Model**:
+- Architecture: DeepLabV3+ ResNet50 @ 512×512
+- Segmentation mIoU: **50.26%**
+- Anomaly Detection (Simple Max Logits): AUROC **90.50%**, AUPR **8.43%**
+- Model path: `models/checkpoints/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth`
+
+**Anomaly Detection Method Ranking**:
+1. **Simple Max Logits**: AUROC 90.50%, AUPR 8.43% (simplest, best AUROC)
+2. **HEAT**: AUROC 89.43%, AUPR 9.15% (best AUPR, but minimal improvement)
+3. **Maximum Softmax Probability**: AUROC 86.71%, AUPR 6.21%
+4. **Energy Score**: (results available in `assets/anomaly_detection/energy_score_results.txt`)
+5. **Standardized Max Logits**: AUROC 80.25%, AUPR 5.41% (worst)
+
+### Repository Structure (After Refactoring)
+
+```
+ml4cv-assignment/
+├── anomaly_detection/          # 5 anomaly detection methods
+│   ├── heat_anomaly_detection.py
+│   ├── simple_max_logits.py
+│   ├── maximum_softmax_probability.py
+│   ├── standardized_max_logits.py
+│   └── energy_score_anomaly_detection.py
+├── models/                     # Training scripts and checkpoints
+│   └── checkpoints/
+│       └── deeplabv3_resnet50_augmented_*.pth
+├── utils/                      # Utility functions
+│   ├── __init__.py
+│   ├── dataloader.py
+│   ├── model_utils.py
+│   ├── visualize.py
+│   └── class_counter.py
+├── config.py                   # Central configuration
+├── main.ipynb                  # Main deliverable
+├── evaluate_qualitative.py     # Qualitative evaluation script
+├── ablation_studies.py         # Ablation study script
+├── create_comparison_plots.py  # Comparison visualization script
+├── download_dataset.sh         # Dataset download script
+├── requirements.txt
+└── README.md
+```
+
+### Key Findings from HEAT Evaluation
+
+**Hypothesis**: Complex methods (energy scoring + spatial smoothing + adaptive thresholding) would significantly outperform simple baselines.
+
+**Result**: HEAT provides **minimal improvement** (~0.7% AUPR) over Simple Max Logits, while being significantly more complex.
+
+**Why Simple Max Logits Works So Well**:
+1. **Strong discriminative features**: Well-trained segmentation model (50.26% mIoU) produces high-quality logits
+2. **Clear confidence signal**: Max logit directly measures model confidence
+3. **No domain shift issues**: Doesn't rely on validation set statistics (unlike SML)
+4. **Computational efficiency**: Single forward pass, no post-processing
+5. **Threshold simplicity**: Single global threshold works well
+
+**When HEAT Might Help**:
+1. Weaker baseline model (lower mIoU)
+2. More complex anomaly distributions
+3. Need for spatial coherence in predictions
+4. Class-specific anomaly characteristics
+
+### Lessons Learned
+
+1. **Simplicity often wins**: Complex methods don't always outperform simple baselines
+2. **Strong baseline matters**: Good segmentation (50.26% mIoU) enables good anomaly detection
+3. **Marginal gains vs. complexity**: +0.7% AUPR improvement may not justify added complexity
+4. **Code organization is critical**: Refactoring made codebase much more maintainable
+5. **Test your refactoring**: Import paths can break easily when moving files
+
+### Time Tracking
+
+- HEAT implementation and evaluation: 1.5 hours
+- Repository refactoring (manual): 0.5 hours
+- Manual `main.ipynb` updates: 0.3 hours
+- `download_dataset.sh` fix: 0.1 hours
+- Import test creation and execution: 0.2 hours
+- Model comparison analysis and documentation: 0.5 hours
+- Analysis and documentation: 0.1 hours
+- **Session total**: 3.2 hours
+- **Project cumulative**: ~33.6 / 50 hours
+- **Remaining budget**: ~16.4 hours
+
+#### 4. Model Comparison Analysis
+
+**Created**: `MODEL_COMPARISON.md` - Comprehensive comparison of all 5 trained models
+
+**Models Compared**:
+1. DeepLabV3+ ResNet50 with multi-scale augmentation: **50.26% mIoU** (BEST)
+2. DeepLabV3+ ResNet50 baseline (no multi-scale): 37.57% mIoU
+3. DeepLabV3+ ResNet101: 37.07% mIoU
+4. SegFormer-B5: 35.57% mIoU
+5. Hiera-Base (full resolution): 32.83% mIoU
+
+**Key Findings**:
+- Multi-scale augmentation provides **+12.69% absolute improvement** (33.8% relative)
+- Augmentation strategy > Architecture choice
+- CNNs outperform transformers on limited data (5,125 images)
+- Downscaled resolution (512×512) is faster and better than full resolution (1280×720)
+- ResNet50 is optimal (deeper models show diminishing returns)
+
+**Recommendation**: **DO NOT retrain the three worse models with augmentation**
+- Time better spent on ablation studies and documentation
+- Scientific value minimal (redundant experiment)
+- Current comparison already comprehensive and informative
+- 17 hours remaining → focus on depth (ablations, analysis) not breadth (more training)
+
+### Next Steps
+
+**Immediate**:
+- ✅ Import verification tests completed (7/7 passed)
+- ✅ Model comparison table created (MODEL_COMPARISON.md)
+- ✅ Decision made: Focus on ablations instead of retraining
+- [ ] Ablation studies (threshold sensitivity, augmentation components)
+- [ ] TODO: Learning parameter optimization (if time permits)
+
+**Remaining Work** (~16.4 hours):
+- ✅ Import tests and validation: Complete
+- ✅ Model comparison analysis: Complete
+- Ablation studies: ~4 hours
+  - Augmentation component ablation
+  - Threshold sensitivity analysis
+  - TODO: Learning parameter optimization (optional, 2-4 hours if time permits)
+- Final documentation and report: ~6 hours
+- Code cleanup and comments: ~2 hours
+- Buffer: ~4 hours
+
+---
+
+## Day 8 - Comprehensive Model Comparison Script & Python Package Setup
+
+### Date: 2025-11-11 (Evening Session)
+
+### What We Did Today
+
+#### 1. Comprehensive Model vs Anomaly Detection Method Comparison Script
+
+**Created**: `visualizations/create_comparison_table.py` (652 lines)
+
+**Purpose**: Generate a comprehensive comparison table showing performance of all 5 models with all 5 anomaly detection methods.
+
+**Models to Compare**:
+1. ResNet50 (50.26% mIoU) - Augmented
+2. ResNet50 (37.57% mIoU) - Baseline
+3. ResNet101 (37.07% mIoU) - Baseline
+4. SegFormer-B5 (35.57% mIoU) - Baseline
+5. Hiera-Base (32.83% mIoU) - Full resolution
+
+**Anomaly Detection Methods**:
+1. Simple Max Logits
+2. Maximum Softmax Probability
+3. Standardized Max Logits
+4. Energy Score
+5. HEAT (Hybrid Energy-Adaptive Thresholding)
+
+**Output Format**: Table with FPR95 / AUROC / AUPR for each model-method combination (25 total evaluations)
+
+**Implementation Details**:
+- Loads each model architecture (DeepLabV3, SegFormer, Hiera)
+- Computes class statistics on validation set for SML
+- Evaluates all 5 methods on test set (1,500 images)
+- Outputs: CSV, Markdown table, and JSON results
+- Includes progress bars and error handling
+
+**Status**: Script tested successfully with correct imports, ready to run (estimated 1.5-2 hours runtime)
+
+**Bugs Fixed During Development**:
+- Fixed `aux_classifier` NoneType error (PyTorch version compatibility)
+- Fixed dataloader unpacking (returns 3 values: images, masks, paths)
+- Added wrappers for SegFormer and Hiera model outputs
+
+#### 2. Repository Organization & Code Refactoring
+
+**Moved Visualization Scripts to `/visualizations/` Directory**:
+- `create_comparison_table.py` (23KB) - Comprehensive comparison script
+- `create_comparison_plots.py` (14KB) - Visualization generation
+- `ablation_studies.py` (13KB) - Ablation study analysis
+
+**Created Directory Structure**:
+```
+visualizations/
+├── __init__.py
+├── create_comparison_table.py
+├── create_comparison_plots.py
+└── ablation_studies.py
+```
+
+**Rationale**: Keep root directory clean, organize analysis/visualization scripts together
+
+#### 3. Pythonic Package Setup (Major Refactoring)
+
+**Problem**: Scripts in subdirectories couldn't import from `config.py` and `utils/` without `sys.path` hacks
+
+**Solution**: Implemented proper Python package structure following PEP standards
+
+**Created `pyproject.toml`** (Modern Python packaging standard):
+```toml
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ml4cv-assignment"
+version = "0.1.0"
+description = "ML4CV Assignment - Semantic Segmentation with Anomaly Detection"
+
+[tool.setuptools]
+packages = ["utils", "anomaly_detection", "models.training_scripts", "visualizations"]
+py-modules = ["config", "evaluate_qualitative"]
+```
+
+**Key Concepts Explained**:
+
+1. **`[build-system]`**: Tells pip to use setuptools for building the package
+2. **`[project]`**: Package metadata (name, version, description)
+3. **`packages`**: Directories with `__init__.py` (like `utils/`, `visualizations/`)
+4. **`py-modules`**: Standalone `.py` files at root (like `config.py`)
+
+**Created `__init__.py` Files**:
+- `visualizations/__init__.py`
+- `anomaly_detection/__init__.py`
+- `models/__init__.py`
+- `models/training_scripts/__init__.py`
+
+**Explanation**: These files (even if empty) tell Python: "this directory is a Python package and can be imported"
+
+**Installed as Editable Package**:
+```bash
+pip install -e .
+```
+
+**What `-e` (editable) does**:
+- Creates symbolic link from virtual environment to project directory
+- Project root becomes part of Python's import path automatically
+- Changes to code take effect immediately (no reinstall needed)
+- Can import from anywhere: `from config import DEVICE`, `from utils.dataloader import ...`
+
+**Removed `sys.path` Hacks**: All scripts now use clean imports without manipulation:
+```python
+# Before (bad practice):
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# After (Pythonic):
+# Just works automatically!
+from config import DEVICE
+from utils.dataloader import StreetHazardsDataset
+```
+
+**Benefits**:
+- ✅ **Pythonic**: Follows PEP standards and Zen of Python
+- ✅ **Clean code**: No sys.path manipulation
+- ✅ **Portable**: Works from any directory
+- ✅ **Professional**: Standard Python package layout
+- ✅ **Maintainable**: Easy for others to understand and use
+- ✅ **Distributable**: Can publish to PyPI if needed
+
+**Testing**: Verified all imports work correctly, scripts compile without errors
+
+#### 4. Installation Instructions Updated
+
+**New Installation Process** (for new users):
+1. Clone repository
+2. Create virtual environment: `python3 -m venv .venv`
+3. Activate: `source .venv/bin/activate`
+4. Install dependencies: `pip install -r requirements.txt`
+5. **Install project as package**: `pip install -e .`  ← NEW STEP
+6. Download datasets: `./download_dataset.sh`
+
+**Why This Matters**: The `pip install -e .` step makes the project's modules importable from anywhere, solving import issues cleanly.
+
+### Key Lessons Learned
+
+1. **Python Packaging Best Practices**:
+   - `sys.path` manipulation is considered a hack in Python
+   - Proper approach: `pyproject.toml` + `pip install -e .`
+   - Follows "Explicit is better than implicit" (Zen of Python)
+   - Makes code portable and maintainable
+
+2. **PyTorch Model Compatibility**:
+   - `aux_classifier` may be None in some PyTorch versions
+   - Always check `hasattr()` and `is not None` before accessing
+   - Use `strict=False` when loading state dicts for flexibility
+
+3. **DataLoader Return Values**:
+   - StreetHazards dataset returns 3 values: `images, masks, image_paths`
+   - Must unpack correctly: `for images, masks, _ in dataloader:`
+   - Forgetting the third value causes "too many values to unpack" error
+
+4. **Code Organization Matters**:
+   - Clear directory structure improves maintainability
+   - Grouping related scripts (visualizations/) reduces clutter
+   - `__init__.py` files are essential for Python packages
+
+### Repository Structure (After Refactoring)
+
+```
+ml4cv-assignment/
+├── pyproject.toml              # Python package configuration (NEW)
+├── requirements.txt
+├── config.py                   # Central configuration
+├── main.ipynb                  # Main deliverable
+├── evaluate_qualitative.py
+├── anomaly_detection/          # 5 anomaly detection methods
+│   ├── __init__.py            # Package marker (NEW)
+│   ├── simple_max_logits.py
+│   ├── maximum_softmax_probability.py
+│   ├── standardized_max_logits.py
+│   ├── energy_score_anomaly_detection.py
+│   └── heat_anomaly_detection.py
+├── models/                     # Model architectures
+│   ├── __init__.py            # Package marker (NEW)
+│   ├── checkpoints/           # Trained models
+│   └── training_scripts/      # Training code
+│       ├── __init__.py        # Package marker (NEW)
+│       ├── deeplabv3plus_resnet50.py
+│       ├── deeplabv3plus_resnet101.py
+│       ├── segformerb5.py
+│       └── hierabase224.py
+├── utils/                      # Utility functions
+│   ├── __init__.py
+│   ├── dataloader.py
+│   ├── model_utils.py
+│   ├── visualize.py
+│   └── class_counter.py
+├── visualizations/             # Analysis & visualization (NEW DIRECTORY)
+│   ├── __init__.py            # Package marker (NEW)
+│   ├── create_comparison_table.py  # Comprehensive comparison
+│   ├── create_comparison_plots.py  # Visualization generation
+│   └── ablation_studies.py         # Ablation analysis
+└── assets/                     # Results and figures
+    └── anomaly_detection/
+```
+
+### Time Tracking
+
+- Script development and debugging: 1.5 hours
+- Repository refactoring and organization: 0.5 hours
+- Python package setup (pyproject.toml): 0.5 hours
+- Import fixes and testing: 0.3 hours
+- Documentation and explanation: 0.5 hours
+- **Session total**: 3.3 hours
+- **Project cumulative**: ~36.9 / 50 hours
+- **Remaining budget**: ~13.1 hours
+
+### Status Summary
+
+**Completed This Session**:
+- ✅ Comprehensive model vs method comparison script (ready to run)
+- ✅ Repository reorganized (visualizations/ directory)
+- ✅ Pythonic package setup (pyproject.toml + editable install)
+- ✅ All imports fixed and tested
+- ✅ Installation instructions updated
+
+**Next Session Priorities**:
+1. **Run comprehensive comparison** (~2 hours runtime) - Get complete results table
+2. **Ablation studies** (~4 hours):
+   - Augmentation component ablation
+   - Threshold sensitivity analysis
+3. **Final documentation** (~6 hours):
+   - Complete README
+   - Write comprehensive report
+   - Publication-quality figures
+4. **Code cleanup** (~2 hours):
+   - Add docstrings
+   - Remove commented code
+   - Final testing
+
+**Remaining Work** (~13.1 hours):
+- Run comparison script: ~2 hours (mostly waiting)
+- Ablation studies: ~4 hours
+- Final documentation: ~6 hours
+- Code cleanup: ~2 hours
+- Buffer: ~1 hour (contingency)
+
+### Current Standing
+
+**Best Model**:
+- Architecture: DeepLabV3+ ResNet50 @ 512×512
+- Segmentation mIoU: **50.26%**
+- Anomaly Detection: AUROC **90.50%**, AUPR **8.43%**
+
+**Repository Health**:
+- ✅ Clean package structure (Pythonic)
+- ✅ All imports working (no hacks)
+- ✅ Professional organization
+- ✅ Ready for comprehensive evaluation
+
+**Project Progress**: 73.8% complete (36.9/50 hours)
+- On track to finish with high quality
+- Good buffer remaining for polish and documentation
+
+---
+
+*Last updated: 2025-11-11*

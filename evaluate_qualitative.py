@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
-from dataloader import (
+from utils.dataloader import (
     StreetHazardsDataset,
     get_transforms,
     CLASS_NAMES,

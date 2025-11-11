@@ -12,7 +12,7 @@ import numpy as np
 import argparse
 from PIL import Image
 from torchvision import transforms
-from dataloader import StreetHazardsDataset, get_transforms, denormalize_image, mask_to_rgb, CLASS_NAMES
+from utils.dataloader import StreetHazardsDataset, get_transforms, denormalize_image, mask_to_rgb, CLASS_NAMES
 from config import IMAGE_SIZE, TRAIN_ROOT
 
 # Parse command-line arguments

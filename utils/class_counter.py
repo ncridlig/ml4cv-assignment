@@ -12,7 +12,7 @@ from tqdm import tqdm
 # Add parent directory to path to import dataloader
 sys.path.append(str(Path(__file__).parent.parent))
 
-from dataloader import (
+from utils.dataloader import (
     StreetHazardsDataset,
     get_transforms,
     CLASS_NAMES,

@@ -14,7 +14,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # =============================================================================
 # MODEL CONFIGURATION
 # =============================================================================
-MODEL_PATH = 'models/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth' # 'models/best_deeplabv3_streethazards_11_52_04-11-25_mIoU_3757.pth'
+MODEL_PATH = 'models/checkpoints/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth'
 MODEL_ARCHITECTURE = 'deeplabv3_resnet50'  # Options: deeplabv3_resnet50, deeplabv3_resnet101, fcn_resnet50
 
 # =============================================================================
@@ -46,7 +46,7 @@ PRINT_FREQ = 500  # Print training stats every N iterations
 # =============================================================================
 # ANOMALY DETECTION CONFIGURATION
 # =============================================================================
-# Simple Max Logits threshold (from simple_max_logits.py results)
+# Simple Max Logits threshold (from anomaly_detection/simple_max_logits.py results)
 ANOMALY_THRESHOLD = -1.4834  # Optimal threshold for F1 score
 MAX_PIXELS_EVALUATION = 1_000_000  # Subsample to this many pixels for evaluation
 RANDOM_SEED = 42  # For reproducible subsampling
@@ -56,7 +56,7 @@ RANDOM_SEED = 42  # For reproducible subsampling
 # =============================================================================
 OUTPUT_DIR_ANOMALY = Path('assets/anomaly_detection')
 OUTPUT_DIR_QUALITATIVE = Path('assets/qualitative_eval')
-OUTPUT_DIR_MODELS = Path('models')
+OUTPUT_DIR_MODELS = Path('models/checkpoints')  # Model checkpoints saved here
 
 # =============================================================================
 # EVALUATION CONFIGURATION

@@ -7,7 +7,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
-from dataloader import StreetHazardsDataset, get_transforms, denormalize_image, mask_to_rgb
+from utils.dataloader import StreetHazardsDataset, get_transforms, denormalize_image, mask_to_rgb
 from config import TRAIN_ROOT
 
 print("="*60)

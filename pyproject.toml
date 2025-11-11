@@ -1,0 +1,39 @@
+[build-system]
+# Tells pip what tools to use to build your package
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Basic package metadata
+name = "ml4cv-assignment"
+version = "0.1.0"
+description = "ML4CV Assignment - Semantic Segmentation with Anomaly Detection"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "Nicolas", email = "noreply@example.com"}
+]
+
+# Runtime dependencies (from requirements.txt)
+# Note: You can optionally list them here instead of requirements.txt
+dependencies = []
+
+[project.optional-dependencies]
+# Development dependencies (optional)
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+    "flake8>=6.0",
+]
+
+[tool.setuptools]
+# Tell setuptools which directories contain Python code
+# This makes 'config.py', 'utils/', etc. importable
+packages = ["utils", "anomaly_detection", "models.training_scripts", "visualizations"]
+
+# Also include standalone modules at the root
+py-modules = ["config", "evaluate_qualitative"]
+
+[tool.setuptools.package-data]
+# Include non-Python files if needed
+"*" = ["*.txt", "*.md", "*.json"]

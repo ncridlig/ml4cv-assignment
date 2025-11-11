@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score, average_precision_score
 import sys
 
-from dataloader import StreetHazardsDataset, get_transforms, CLASS_NAMES
+from utils.dataloader import StreetHazardsDataset, get_transforms, CLASS_NAMES
 from utils.model_utils import load_model
 from config import (
     DEVICE, MODEL_PATH, NUM_CLASSES, ANOMALY_CLASS_IDX,

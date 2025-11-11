@@ -7,7 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, roc_curve
 from torch.utils.data import DataLoader
-from dataloader import StreetHazardsDataset, get_transforms
+from utils.dataloader import StreetHazardsDataset, get_transforms
 from utils.model_utils import load_model
 from config import (
     DEVICE,

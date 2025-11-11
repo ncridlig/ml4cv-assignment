@@ -24,7 +24,7 @@ import numpy as np
 import os
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
-from dataloader import StreetHazardsDataset, get_transforms
+from utils.dataloader import StreetHazardsDataset, get_transforms
 from config import (
     DEVICE,
     NUM_CLASSES,
@@ -264,7 +264,7 @@ print(f"✅ Validation batches: {len(val_loader)}")
 # -----------------------------
 # TENSORBOARD SETUP
 # -----------------------------
-writer = SummaryWriter(log_dir="runs/hiera_base_streethazards")
+writer = SummaryWriter(log_dir="models/runs/hiera_base_streethazards")
 
 # -----------------------------
 # MODEL
@@ -395,7 +395,7 @@ def validate(model, loader, loss_fn, epoch):
     return avg_iou, avg_loss
 
 
-def save_best_model(model, miou, best_miou, base_name="models/hiera_base_streethazards"):
+def save_best_model(model, miou, best_miou, base_name="models/checkpoints/hiera_base_streethazards"):
     """
     Save best model with timestamp in filename format: _HH_MM_DAY-MONTH-YY_mIoU_XXXX
     Example: hiera_base_streethazards_14_30_07-11-25_mIoU_4523.pth
@@ -475,5 +475,5 @@ print("TRAINING COMPLETE!")
 print("="*60)
 print(f"Best validation mIoU: {best_miou:.4f} ({best_miou*100:.2f}%)")
 print(f"Model saved in: models/")
-print(f"TensorBoard logs: runs/hiera_base_streethazards/")
+print(f"TensorBoard logs: models/runs/hiera_base_streethazards/")
 print("="*60 + "\n")

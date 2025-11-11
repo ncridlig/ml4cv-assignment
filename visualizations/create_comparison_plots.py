@@ -17,7 +17,7 @@ from sklearn.metrics import (
 )
 from torch.utils.data import DataLoader
 
-from dataloader import StreetHazardsDataset, get_transforms
+from utils.dataloader import StreetHazardsDataset, get_transforms
 from utils.model_utils import load_model
 from config import (
     DEVICE, MODEL_PATH, NUM_CLASSES, ANOMALY_CLASS_IDX,

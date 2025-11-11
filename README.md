@@ -104,13 +104,19 @@ python3 evaluate.py
 **Anomaly Detection Methods**:
 ```bash
 # Simple Max Logits (Best: AUROC 90.50%)
-python3 simple_max_logits.py
+python3 anomaly_detection/simple_max_logits.py
 
 # Maximum Softmax Probability
-python3 maximum_softmax_probability.py
+python3 anomaly_detection/maximum_softmax_probability.py
 
 # Standardized Max Logits
-python3 standardized_max_logits.py
+python3 anomaly_detection/standardized_max_logits.py
+
+# Energy Score
+python3 anomaly_detection/energy_score_anomaly_detection.py
+
+# HEAT (Hybrid Energy-Adaptive Thresholding)
+python3 anomaly_detection/heat_anomaly_detection.py
 ```
 
 **Ablation Studies**:
@@ -128,12 +134,16 @@ python3 ablation_studies.py
 ├── deeplabv3plus_resnet50.py          # Model architecture
 ├── train.py                            # Training script (multi-scale augmentation)
 ├── evaluate.py                         # Closed-set segmentation evaluation
-├── simple_max_logits.py               # Anomaly detection method #1
-├── maximum_softmax_probability.py     # Anomaly detection method #2
-├── standardized_max_logits.py         # Anomaly detection method #3
 ├── ablation_studies.py                # Ablation study comparisons
-├── models/                             # Trained model weights
-│   └── deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth
+├── models/                             # Model training and checkpoints
+│   ├── training_scripts/              # PyTorch training scripts
+│   └── checkpoints/                   # Trained model weights (.pth files)
+├── anomaly_detection/                 # Anomaly detection methods
+│   ├── simple_max_logits.py          # Method #1 (Best: AUROC 90.50%)
+│   ├── maximum_softmax_probability.py # Method #2
+│   ├── standardized_max_logits.py    # Method #3
+│   ├── energy_score_anomaly_detection.py # Method #4
+│   └── heat_anomaly_detection.py     # Method #5 (HEAT)
 ├── assets/                             # Pre-computed visualizations
 │   ├── qualitative_eval/              # Segmentation samples
 │   └── anomaly_detection/             # Anomaly detection samples
