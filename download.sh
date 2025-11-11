@@ -12,7 +12,7 @@ else
     echo "Train tar file already exists, skipping download."
 fi
 
-if [ ! -d streethazards_train/streethazards ]; then
+if [ ! -d streethazards_train/train ]; then
     echo "Extracting train set..."
     tar -xf streethazards_train/streethazards_train.tar -C streethazards_train
 else
@@ -28,7 +28,7 @@ else
     echo "Test tar file already exists, skipping download."
 fi
 
-if [ ! -d streethazards_test/streethazards ]; then
+if [ ! -d streethazards_test/test ]; then
     echo "Extracting test set..."
     tar -xf streethazards_test/streethazards_test.tar -C streethazards_test
 else

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torchvision.models.segmentation import deeplabv3_resnet50
+from torchvision.models.segmentation import deeplabv3_resnet101
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 import numpy as np
@@ -56,7 +56,7 @@ writer = SummaryWriter(log_dir="runs/streethazards_experiment")
 # -----------------------------
 # MODEL
 # -----------------------------
-model = deeplabv3_resnet50(weights='DEFAULT')
+model = deeplabv3_resnet101(weights='DEFAULT')
 # 13 normal classes + 1 anomaly class → ignore anomaly (index 13)
 # Reconfigure the pretrained DeepLab model to predict 13 segmentation classes instead of the 21 COCO classes
 model.classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)
@@ -144,7 +144,7 @@ def validate(model, loader, loss_fn):
     return avg_iou
 
 
-def save_best_model(model, miou, best_miou, base_name="models/deeplabv3_"):
+def save_best_model(model, miou, best_miou, base_name="models/deeplabv3_resnet101"):
     """
     Save best model with timestamp in filename format: _HH_MM_DAY-MONTH-25
     Example: best_deeplabv3_streethazards_14_30_04-11-25.pth for Nov 4, 2025 at 14:30

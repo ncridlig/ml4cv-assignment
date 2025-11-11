@@ -1,1 +1,2 @@
 - Always run python using the virtual enviroment located in .venv, otherwise not are requirments are installed.
+- log.md contains context for this project

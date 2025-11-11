@@ -25,3 +25,10 @@ notebook
 # Optional: for progress bars and logging
 rich
 tensorboard
+
+# For SegFormer model
+transformers
+
+# For Hiera model
+hiera-transformer
+timm
