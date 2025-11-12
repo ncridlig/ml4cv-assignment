@@ -72,18 +72,20 @@ class StreetHazardsDataset(Dataset):
     Custom dataset for StreetHazards segmentation.
     Loads image-mask pairs from the dataset folder structure.
     """
-    def __init__(self, root_dir, split='training', transform=None, mask_transform=None):
+    def __init__(self, root_dir, split='training', transform=None, mask_transform=None, image_size=None):
         """
         Args:
             root_dir (str): Path to dataset root (e.g., 'streethazards_train/train')
             split (str): 'training', 'validation', or 'test'
             transform: Transformations for images
             mask_transform: Transformations for masks
+            image_size: Target image size (H, W). If None, uses IMAGE_SIZE from config.
         """
         self.root_dir = Path(root_dir)
         self.split = split
         self.transform = transform
         self.mask_transform = mask_transform
+        self.image_size = image_size if image_size is not None else IMAGE_SIZE
 
         # Find all image paths
         if split == 'test':
@@ -137,7 +139,7 @@ class StreetHazardsDataset(Dataset):
 
             # 1. Multi-scale random crop (KEY AUGMENTATION)
             # Following DeepLabV3+ paper: variable crop sizes with scale range [0.5, 2.0]
-            scale_crop = JointRandomScaleCrop(output_size=IMAGE_SIZE, scale_range=(0.5, 2.0), base_crop_size=512)
+            scale_crop = JointRandomScaleCrop(output_size=self.image_size, scale_range=(0.5, 2.0), base_crop_size=512)
             image, mask_pil = scale_crop(image, mask_pil)
 
             # 2. Random rotation (±10 degrees) introduces black edges

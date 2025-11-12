@@ -34,6 +34,10 @@ from config import (
     TRAIN_ROOT
 )
 
+# Note: NUM_CLASSES in training is 14 (includes anomaly class), but we ignore it
+NUM_CLASSES_TRAIN = 13  # Train on 0-12, ignore 13 (anomaly)
+IMAGE_SIZE = (640, 640)  # SegFormer-B5 default input size
+
 print("="*60)
 print("SEGFORMER-B5 TRAINING")
 print("="*60)
@@ -44,9 +48,6 @@ print(f"Epochs: {EPOCHS}")
 print(f"Image size: {IMAGE_SIZE}")
 print(f"Number of classes: 13 (ignoring anomaly class 13)")
 print("="*60)
-
-# Note: NUM_CLASSES in training is 14 (includes anomaly class), but we ignore it
-NUM_CLASSES_TRAIN = 13  # Train on 0-12, ignore 13 (anomaly)
 
 # -----------------------------
 # DATASETS
@@ -90,7 +91,7 @@ print(f"✅ Validation batches: {len(val_loader)}")
 # -----------------------------
 # TENSORBOARD SETUP
 # -----------------------------
-writer = SummaryWriter(log_dir="models/runs/segformer_b5_streethazards")
+writer = SummaryWriter(log_dir="models/runs/segformer_b5_streethazards_augmented")
 
 # -----------------------------
 # MODEL
@@ -103,6 +104,11 @@ model = SegformerForSemanticSegmentation.from_pretrained(
     num_labels=NUM_CLASSES_TRAIN,
     ignore_mismatched_sizes=True,  # Allow different number of classes
 )
+
+# Load trained weights (to continue an interrupted training)
+state_dict = torch.load('models/checkpoints/segformer_b5_streethazards_augmented_08_42_12-11-25_mIoU_5380.pth', map_location=DEVICE)
+model.load_state_dict(state_dict, strict=False)
+print("✅ Loaded checkpoint weights for continued training")
 
 model.to(DEVICE)
 print(f"✅ SegFormer-B5 loaded successfully")
@@ -236,10 +242,10 @@ def validate(model, loader, loss_fn, epoch):
     return avg_iou, avg_loss
 
 
-def save_best_model(model, miou, best_miou, base_name="models/checkpoints/segformer_b5_streethazards"):
+def save_best_model(model, miou, best_miou, base_name="models/checkpoints/segformer_b5_streethazards_augmented"):
     """
     Save best model with timestamp in filename format: _HH_MM_DAY-MONTH-YY_mIoU_XXXX
-    Example: segformer_b5_streethazards_14_30_07-11-25_mIoU_4523.pth
+    Example: segformer_b5_streethazards_augmented_14_30_07-11-25_mIoU_4523.pth
     """
     if miou > best_miou:
         # Generate timestamp: _HH_MM_DAY-MONTH-YY
@@ -315,14 +321,14 @@ print("\n" + "="*60)
 print("TRAINING COMPLETE!")
 print("="*60)
 print(f"Best validation mIoU: {best_miou:.4f} ({best_miou*100:.2f}%)")
-print(f"Model saved in: models/")
-print(f"TensorBoard logs: models/runs/segformer_b5_streethazards/")
+print(f"Model saved in: models/checkpoints/")
+print(f"TensorBoard logs: models/runs/segformer_b5_streethazards_augmented/")
 print("="*60 + "\n")
 
 # -----------------------------
 # SAVE TRAINING SUMMARY LOG
 # -----------------------------
-summary_path = "assets/segformer_b5_training_summary.txt"
+summary_path = "assets/segformer_b5_augmented_training_summary.txt"
 os.makedirs(os.path.dirname(summary_path), exist_ok=True)
 
 with open(summary_path, 'w') as f:
@@ -367,8 +373,8 @@ with open(summary_path, 'w') as f:
 
     f.write("OUTPUT FILES\n")
     f.write("-"*60 + "\n")
-    f.write(f"Model Checkpoints: models/segformer_b5_streethazards_*.pth\n")
-    f.write(f"TensorBoard Logs: models/runs/segformer_b5_streethazards/\n")
+    f.write(f"Model Checkpoints: models/segformer_b5_augmented_streethazards_*.pth\n")
+    f.write(f"TensorBoard Logs: models/runs/segformer_b5_augmented_streethazards/\n")
     f.write(f"Training Summary: {summary_path}\n\n")
 
     f.write("COMPARISON WITH BASELINE\n")

@@ -27,7 +27,7 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 import pandas as pd
-from sklearn.metrics import roc_auc_score, average_precision_score, roc_curve
+from sklearn.metrics import roc_auc_score, average_precision_score, roc_curve, precision_recall_curve, f1_score
 from torch.utils.data import DataLoader
 from torchvision.models.segmentation import deeplabv3_resnet50, deeplabv3_resnet101
 import warnings
@@ -65,26 +65,43 @@ MODELS = {
         'path': 'models/checkpoints/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth',
         'architecture': 'deeplabv3_resnet50',
         'miou': 50.26,
+        'image_size': (512, 512),
     },
     'ResNet50\n(37.57% mIoU)\nBaseline': {
         'path': 'models/checkpoints/best_deeplabv3_streethazards_11_52_04-11-25_mIoU_3757.pth',
         'architecture': 'deeplabv3_resnet50',
         'miou': 37.57,
+        'image_size': (512, 512),
     },
     'ResNet101\n(37.07% mIoU)\nBaseline': {
         'path': 'models/checkpoints/deeplabv3_resnet101__05_02_07-11-25_mIoU_0.3707.pth',
         'architecture': 'deeplabv3_resnet101',
         'miou': 37.07,
+        'image_size': (512, 512),
     },
     'SegFormer-B5\n(35.57% mIoU)\nBaseline': {
         'path': 'models/checkpoints/segformer_b5_streethazards_04_44_09-11-25_mIoU_3556.pth',
         'architecture': 'segformer_b5',
         'miou': 35.57,
+        'image_size': (512, 512),
     },
-    'Hiera-Base\n(32.83% mIoU)\nFull Res': {
+    'SegFormer-B5\n(54.12% mIoU)\nAugmented': {
+        'path': 'models/checkpoints/segformer_b5_streethazards_augmented_10_06_12-11-25_mIoU_5412.pth',
+        'architecture': 'segformer_b5',
+        'miou': 54.12,
+        'image_size': (640, 640),
+    },
+    'Hiera-Base\n(32.83% mIoU)\n224': {
         'path': 'models/checkpoints/hiera_base_streethazards_06_09_07-11-25_mIoU_3283.pth',
         'architecture': 'hiera_base',
         'miou': 32.83,
+        'image_size': (224, 224),  # Hiera trained at 224x224
+    },
+    'Hiera-Large\n(46.77% mIoU)\n224': {
+        'path': 'models/checkpoints/hiera_large_cropaug_streethazards_04_43_12-11-25_mIoU_4677.pth',
+        'architecture': 'hiera_large',
+        'miou': 46.77,
+        'image_size': (224, 224),  # Hiera trained at 224x224
     },
 }
 
@@ -175,18 +192,12 @@ class HieraSegmentation(nn.Module):
                 checkpoint="mae_in1k_ft_in1k" if pretrained else None
             )
             stage_channels = [96, 192, 384, 768]
-        elif backbone_name == 'hiera_small_224':
-            self.backbone = hiera.hiera_small_224(
+        elif backbone_name == 'hiera_large_224':
+            self.backbone = hiera.hiera_large_224(
                 pretrained=pretrained,
                 checkpoint="mae_in1k_ft_in1k" if pretrained else None
             )
-            stage_channels = [96, 192, 384, 768]
-        elif backbone_name == 'hiera_tiny_224':
-            self.backbone = hiera.hiera_tiny_224(
-                pretrained=pretrained,
-                checkpoint="mae_in1k_ft_in1k" if pretrained else None
-            )
-            stage_channels = [96, 192, 384, 768]
+            stage_channels = [144, 288, 576, 1152]
         else:
             raise ValueError(f"Unknown backbone: {backbone_name}")
 
@@ -295,7 +306,35 @@ def load_model(model_path, architecture):
             # Wrap to make output compatible
             model = HieraWrapper(hiera_model)
 
-            print(f"✅ Successfully loaded Hiera model")
+            print(f"✅ Successfully loaded Hiera Base model")
+        except Exception as e:
+            print(f"⚠️  Failed to load Hiera: {e}")
+            print(f"⚠️  Skipping {architecture}")
+            import traceback
+            traceback.print_exc()
+            return None
+        
+    elif architecture == 'hiera_large':
+        if not HIERA_AVAILABLE:
+            print(f"⚠️  Skipping {architecture} - hiera library not available")
+            return None
+
+        try:
+            # Create Hiera model (same architecture as training script)
+            hiera_model = HieraSegmentation(
+                backbone_name='hiera_large_224',
+                num_classes=NUM_CLASSES,
+                pretrained=False  # We'll load trained weights
+            )
+
+            # Load trained weights
+            state_dict = torch.load(model_path, map_location=DEVICE)
+            hiera_model.load_state_dict(state_dict, strict=False)
+
+            # Wrap to make output compatible
+            model = HieraWrapper(hiera_model)
+
+            print(f"✅ Successfully loaded Hiera Large model")
         except Exception as e:
             print(f"⚠️  Failed to load Hiera: {e}")
             print(f"⚠️  Skipping {architecture}")
@@ -322,6 +361,26 @@ def calculate_fpr95(y_true, y_scores):
 
     # Get FPR at the point where TPR first reaches 0.95
     return fpr[idx[0]]
+
+def calculate_optimal_f1(y_true, y_scores):
+    """
+    Calculate optimal F1 score and corresponding threshold.
+
+    Returns:
+        tuple: (best_f1, optimal_threshold)
+    """
+    precision, recall, thresholds = precision_recall_curve(y_true, y_scores)
+
+    # Calculate F1 scores for all thresholds
+    # Note: precision and recall arrays are 1 element longer than thresholds
+    f1_scores = 2 * (precision[:-1] * recall[:-1]) / (precision[:-1] + recall[:-1] + 1e-10)
+
+    # Find best F1 score
+    best_idx = np.argmax(f1_scores)
+    best_f1 = f1_scores[best_idx]
+    optimal_threshold = thresholds[best_idx]
+
+    return best_f1, optimal_threshold
 
 # =============================================================================
 # ANOMALY DETECTION METHODS
@@ -401,7 +460,7 @@ def evaluate_method(model, test_loader, method_name, class_means=None, class_std
     Evaluate a single anomaly detection method on a model.
 
     Returns:
-        dict: {'fpr95': float, 'auroc': float, 'aupr': float}
+        dict: {'fpr95': float, 'auroc': float, 'aupr': float, 'f1': float, 'threshold': float}
     """
     print(f"\nEvaluating: {method_name}")
 
@@ -454,13 +513,16 @@ def evaluate_method(model, test_loader, method_name, class_means=None, class_std
     auroc = roc_auc_score(all_ground_truth, all_anomaly_scores)
     aupr = average_precision_score(all_ground_truth, all_anomaly_scores)
     fpr95 = calculate_fpr95(all_ground_truth, all_anomaly_scores)
+    best_f1, optimal_threshold = calculate_optimal_f1(all_ground_truth, all_anomaly_scores)
 
-    print(f"  FPR95: {fpr95:.4f} | AUROC: {auroc:.4f} | AUPR: {aupr:.4f}")
+    print(f"  FPR95: {fpr95:.4f} | AUROC: {auroc:.4f} | AUPR: {aupr:.4f} | F1: {best_f1:.4f} | Threshold: {optimal_threshold:.4f}")
 
     return {
         'fpr95': fpr95,
         'auroc': auroc,
         'aupr': aupr,
+        'f1': best_f1,
+        'threshold': optimal_threshold,
     }
 
 # =============================================================================
@@ -479,27 +541,6 @@ def main():
     print(f"Device: {DEVICE}")
     print("="*80)
 
-    # Prepare data loaders
-    print("\nPreparing data loaders...")
-    _, val_transform = get_transforms(image_size=(512, 512))
-
-    val_dataset = StreetHazardsDataset(
-        root_dir='streethazards_train/train',
-        split='validation',
-        transform=val_transform
-    )
-    test_dataset = StreetHazardsDataset(
-        root_dir='streethazards_test/test',
-        split='test',
-        transform=val_transform
-    )
-
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=4)
-
-    print(f"Validation samples: {len(val_dataset)}")
-    print(f"Test samples: {len(test_dataset)}")
-
     # Results storage
     results = {}
 
@@ -508,6 +549,7 @@ def main():
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.replace(chr(10), ' ')}")
         print(f"mIoU: {model_config['miou']}%")
+        print(f"Image Size: {model_config['image_size']}")
         print(f"{'='*80}")
 
         # Load model
@@ -516,6 +558,32 @@ def main():
         if model is None:
             print(f"⚠️  Skipping {model_name} - could not load model")
             continue
+
+        # Prepare model-specific data loaders
+        print(f"\nPreparing data loaders for {model_config['image_size']}...")
+        val_transform, val_mask_transform = get_transforms(
+            image_size=model_config['image_size'],
+            is_training=False
+        )
+
+        val_dataset = StreetHazardsDataset(
+            root_dir='streethazards_train/train',
+            split='validation',
+            transform=val_transform,
+            mask_transform=val_mask_transform
+        )
+        test_dataset = StreetHazardsDataset(
+            root_dir='streethazards_test/test',
+            split='test',
+            transform=val_transform,
+            mask_transform=val_mask_transform
+        )
+
+        val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4)
+        test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=4)
+
+        print(f"Loaded {len(val_dataset)} validation samples")
+        print(f"Loaded {len(test_dataset)} test samples")
 
         # Compute class statistics for SML (only once per model)
         class_means, class_stds = compute_class_statistics(model, val_loader)
@@ -543,7 +611,13 @@ def main():
                 model_results[method] = metrics
             except Exception as e:
                 print(f"❌ Error evaluating {method}: {e}")
-                model_results[method] = {'fpr95': np.nan, 'auroc': np.nan, 'aupr': np.nan}
+                model_results[method] = {
+                    'fpr95': np.nan,
+                    'auroc': np.nan,
+                    'aupr': np.nan,
+                    'f1': np.nan,
+                    'threshold': np.nan
+                }
 
         results[model_name] = model_results
 
@@ -552,18 +626,22 @@ def main():
         torch.cuda.empty_cache()
 
     # ==========================================================================
-    # CREATE COMPARISON TABLE
+    # CREATE COMPARISON TABLES
     # ==========================================================================
 
     print("\n" + "="*80)
-    print("GENERATING COMPARISON TABLE")
+    print("GENERATING COMPARISON TABLES")
     print("="*80)
 
-    # Create pandas DataFrame for easier formatting
-    table_data = []
+    # Table 1: Main metrics including F1
+    table_data_main = []
+    table_data_f1 = []
+    table_data_threshold = []
 
     for model_name in results.keys():
-        row = {'Model': model_name.replace('\n', ' ')}
+        row_main = {'Model': model_name.replace('\n', ' ')}
+        row_f1 = {'Model': model_name.replace('\n', ' ')}
+        row_threshold = {'Model': model_name.replace('\n', ' ')}
 
         for method in methods:
             if method in results[model_name]:
@@ -571,30 +649,58 @@ def main():
                 fpr95 = metrics['fpr95'] * 100  # Convert to percentage
                 auroc = metrics['auroc'] * 100
                 aupr = metrics['aupr'] * 100
+                f1 = metrics['f1'] * 100
+                threshold = metrics['threshold']
 
-                # Format: FPR95 / AUROC / AUPR
-                cell = f"{fpr95:.1f} / {auroc:.1f} / {aupr:.1f}"
+                # Format: FPR95 / AUROC / AUPR / F1
+                row_main[method] = f"{fpr95:.1f} / {auroc:.1f} / {aupr:.1f} / {f1:.1f}"
+                row_f1[method] = f"{f1:.2f}"
+                row_threshold[method] = f"{threshold:.4f}"
             else:
-                cell = "N/A"
+                row_main[method] = "N/A"
+                row_f1[method] = "N/A"
+                row_threshold[method] = "N/A"
 
-            row[method] = cell
+        table_data_main.append(row_main)
+        table_data_f1.append(row_f1)
+        table_data_threshold.append(row_threshold)
 
-        table_data.append(row)
+    df_main = pd.DataFrame(table_data_main)
+    df_f1 = pd.DataFrame(table_data_f1)
+    df_threshold = pd.DataFrame(table_data_threshold)
 
-    df = pd.DataFrame(table_data)
-
-    # Save to CSV
+    # Save main table to CSV
     output_csv = 'assets/model_method_comparison.csv'
-    df.to_csv(output_csv, index=False)
-    print(f"\n✅ Saved CSV: {output_csv}")
+    df_main.to_csv(output_csv, index=False)
+    print(f"\n✅ Saved main CSV: {output_csv}")
+
+    # Save F1 scores table
+    output_f1_csv = 'assets/model_method_f1_scores.csv'
+    df_f1.to_csv(output_f1_csv, index=False)
+    print(f"✅ Saved F1 scores CSV: {output_f1_csv}")
+
+    # Save thresholds table
+    output_threshold_csv = 'assets/model_method_thresholds.csv'
+    df_threshold.to_csv(output_threshold_csv, index=False)
+    print(f"✅ Saved thresholds CSV: {output_threshold_csv}")
 
     # Save to markdown table
     output_md = 'assets/model_method_comparison.md'
     with open(output_md, 'w') as f:
         f.write("# Model vs Anomaly Detection Method Comparison\n\n")
-        f.write("**Format**: FPR95 / AUROC / AUPR (all in %)\n\n")
-        f.write("**Lower FPR95 is better**, **Higher AUROC/AUPR is better**\n\n")
-        f.write(df.to_markdown(index=False))
+        f.write("## Main Results\n\n")
+        f.write("**Format**: FPR95 / AUROC / AUPR / F1 (all in %)\n\n")
+        f.write("**Lower FPR95 is better**, **Higher AUROC/AUPR/F1 is better**\n\n")
+        f.write(df_main.to_markdown(index=False))
+
+        f.write("\n\n## F1 Scores (%) - For Threshold Selection\n\n")
+        f.write("**Higher is better**. This is the metric used to find optimal thresholds.\n\n")
+        f.write(df_f1.to_markdown(index=False))
+
+        f.write("\n\n## Optimal Thresholds\n\n")
+        f.write("These are the thresholds that maximize F1 score for each method/model combination.\n\n")
+        f.write(df_threshold.to_markdown(index=False))
+
         f.write("\n\n---\n\n")
         f.write("## Interpretation\n\n")
         f.write("- **FPR95**: False Positive Rate at 95% True Positive Rate (lower is better)\n")
@@ -603,16 +709,31 @@ def main():
         f.write("  - Measures overall ranking quality across all thresholds\n")
         f.write("- **AUPR**: Area Under Precision-Recall Curve (higher is better)\n")
         f.write("  - Primary metric for imbalanced data (~1% anomaly rate)\n")
+        f.write("- **F1**: Harmonic mean of precision and recall at optimal threshold (higher is better)\n")
+        f.write("  - This is what you optimize to find the best operating threshold\n")
+        f.write("  - Best balance between false positives and false negatives\n")
+        f.write("- **Threshold**: The anomaly score threshold that maximizes F1\n")
+        f.write("  - Use this threshold for deployment/inference\n")
 
     print(f"✅ Saved Markdown: {output_md}")
 
-    # Print table to console
+    # Print tables to console
     print("\n" + "="*80)
-    print("RESULTS TABLE")
+    print("MAIN RESULTS TABLE")
     print("="*80)
-    print("\nFormat: FPR95 / AUROC / AUPR (all in %)")
-    print("Lower FPR95 is better, Higher AUROC/AUPR is better")
-    print("\n" + df.to_string(index=False))
+    print("\nFormat: FPR95 / AUROC / AUPR / F1 (all in %)")
+    print("Lower FPR95 is better, Higher AUROC/AUPR/F1 is better")
+    print("\n" + df_main.to_string(index=False))
+
+    print("\n" + "="*80)
+    print("F1 SCORES (%) - FOR THRESHOLD SELECTION")
+    print("="*80)
+    print("\n" + df_f1.to_string(index=False))
+
+    print("\n" + "="*80)
+    print("OPTIMAL THRESHOLDS")
+    print("="*80)
+    print("\n" + df_threshold.to_string(index=False))
     print("\n" + "="*80)
 
     # Save raw results as JSON
@@ -628,6 +749,8 @@ def main():
                 'fpr95': float(metrics['fpr95']),
                 'auroc': float(metrics['auroc']),
                 'aupr': float(metrics['aupr']),
+                'f1': float(metrics['f1']),
+                'threshold': float(metrics['threshold']),
             }
 
     with open(output_json, 'w') as f:
@@ -637,9 +760,11 @@ def main():
 
     print("\n🎉 Comparison complete!")
     print(f"Results saved to:")
-    print(f"  - {output_csv}")
-    print(f"  - {output_md}")
-    print(f"  - {output_json}")
+    print(f"  - {output_csv} (main results)")
+    print(f"  - {output_f1_csv} (F1 scores)")
+    print(f"  - {output_threshold_csv} (optimal thresholds)")
+    print(f"  - {output_md} (markdown report)")
+    print(f"  - {output_json} (raw JSON data)")
 
 if __name__ == '__main__':
     main()

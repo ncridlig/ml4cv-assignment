@@ -5,6 +5,7 @@ Model utilities for loading and managing segmentation models.
 import torch
 import torch.nn as nn
 from torchvision.models.segmentation import deeplabv3_resnet50, deeplabv3_resnet101, fcn_resnet50
+from transformers import SegformerForSemanticSegmentation
 
 
 def load_model(model_path, device, num_classes=13, architecture='deeplabv3_resnet50'):
@@ -36,6 +37,12 @@ def load_model(model_path, device, num_classes=13, architecture='deeplabv3_resne
     elif architecture == 'fcn_resnet50':
         model = fcn_resnet50(weights=None)
         model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=1)
+    elif architecture == 'segformer_b5':
+        model = SegformerForSemanticSegmentation.from_pretrained(
+            "nvidia/segformer-b5-finetuned-ade-640-640",
+            num_labels=num_classes,
+            ignore_mismatched_sizes=True,  # Allow different number of classes
+        )
     else:
         raise ValueError(f"Unsupported architecture: {architecture}. "
                         f"Choose from: deeplabv3_resnet50, deeplabv3_resnet101, fcn_resnet50")

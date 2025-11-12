@@ -9,6 +9,7 @@ torchaudio
 # Common ML / data processing libraries
 numpy
 pandas
+tabulate  # For pandas markdown export
 scikit-learn
 matplotlib
 seaborn

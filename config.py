@@ -25,7 +25,7 @@ TRAIN_ROOT = 'streethazards_train/train'
 TEST_ROOT = 'streethazards_test/test'
 
 # Image dimensions
-IMAGE_SIZE = (512, 512) # (1280, 720) is streethazards original resolution # 512 is the best for resnet50/101
+IMAGE_SIZE = (640, 640) # (1280, 720) is streethazards original resolution # 512 is the best for resnet50/101
 
 # =============================================================================
 # CLASS CONFIGURATION
@@ -39,7 +39,7 @@ IGNORE_INDEX = 13  # Ignore anomaly class during training
 # =============================================================================
 BATCH_SIZE = 4  # Good for batch norm stability
 LEARNING_RATE = 1e-4
-EPOCHS = 40  # Increased for stronger augmentation (was 15)
+EPOCHS = 20  # Increase for stronger augmentation
 NUM_WORKERS = 4
 PRINT_FREQ = 500  # Print training stats every N iterations
 
