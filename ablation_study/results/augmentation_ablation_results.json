@@ -1,0 +1,32 @@
+{
+  "No_Aug": {
+    "best_val_miou": 0.562935263010132,
+    "best_epoch": 19,
+    "final_epoch": 22,
+    "stopped_early": true
+  },
+  "+Scale": {
+    "best_val_miou": 0.5176041098485258,
+    "best_epoch": 9,
+    "final_epoch": 12,
+    "stopped_early": true
+  },
+  "+Scale+Rotate": {
+    "best_val_miou": 0.5042966193379494,
+    "best_epoch": 8,
+    "final_epoch": 11,
+    "stopped_early": true
+  },
+  "+Scale+Rotate+Flip": {
+    "best_val_miou": 0.490074732061965,
+    "best_epoch": 9,
+    "final_epoch": 12,
+    "stopped_early": true
+  },
+  "+Scale+Rotate+Flip+Color": {
+    "best_val_miou": 0.4812711159815235,
+    "best_epoch": 6,
+    "final_epoch": 9,
+    "stopped_early": true
+  }
+}

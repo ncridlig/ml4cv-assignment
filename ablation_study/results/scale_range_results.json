@@ -1,0 +1,72 @@
+{
+  "ScaleRange_0.9_1.1": {
+    "best_val_miou": 0.49271785029616716,
+    "best_epoch": 2,
+    "final_epoch": 5,
+    "stopped_early": true,
+    "scale_range": [
+      0.9,
+      1.1
+    ]
+  },
+  "ScaleRange_0.75_1.25": {
+    "best_val_miou": 0.5136607560141462,
+    "best_epoch": 11,
+    "final_epoch": 14,
+    "stopped_early": true,
+    "scale_range": [
+      0.75,
+      1.25
+    ]
+  },
+  "ScaleRange_0.5_2.0": {
+    "best_val_miou": 0.4989706016297749,
+    "best_epoch": 4,
+    "final_epoch": 7,
+    "stopped_early": true,
+    "scale_range": [
+      0.5,
+      2.0
+    ]
+  },
+  "ScaleRange_0.4_2.5": {
+    "best_val_miou": 0.4954766862331123,
+    "best_epoch": 5,
+    "final_epoch": 8,
+    "stopped_early": true,
+    "scale_range": [
+      0.4,
+      2.5
+    ]
+  },
+  "ScaleRange_0.3_3.0": {
+    "best_val_miou": 0.49879012102474884,
+    "best_epoch": 5,
+    "final_epoch": 8,
+    "stopped_early": true,
+    "scale_range": [
+      0.3,
+      3.0
+    ]
+  },
+  "ScaleRange_0.5_1.5": {
+    "best_val_miou": 0.5143192964857871,
+    "best_epoch": 7,
+    "final_epoch": 10,
+    "stopped_early": true,
+    "scale_range": [
+      0.5,
+      1.5
+    ]
+  },
+  "ScaleRange_0.7_2.0": {
+    "best_val_miou": 0.5105002195005823,
+    "best_epoch": 7,
+    "final_epoch": 10,
+    "stopped_early": true,
+    "scale_range": [
+      0.7,
+      2.0
+    ]
+  }
+}

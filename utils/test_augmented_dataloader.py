@@ -1,86 +1,51 @@
 """
-Quick test to verify that the augmented dataloader works correctly.
-Loads a few samples and displays them to check augmentations.
+Test and visualize scale augmentation from a dataloader.
 
 Usage:
-    python test_augmented_dataloader.py --num_samples 5 --image_idx 100
+    # As a module:
+    from utils.test_augmented_dataloader import visualize_scale_augmentation
+    visualize_scale_augmentation(train_dataset, val_dataset, image_idx=100, num_samples=4)
+
+    # As a script:
+    python -m utils.test_augmented_dataloader --num_samples 5 --image_idx 100
 """
 
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
-import argparse
-from PIL import Image
-from torchvision import transforms
-from utils.dataloader import StreetHazardsDataset, get_transforms, denormalize_image, mask_to_rgb, CLASS_NAMES
-from config import IMAGE_SIZE, TRAIN_ROOT
+from utils.dataloader import denormalize_image, mask_to_rgb
 
-# Parse command-line arguments
-parser = argparse.ArgumentParser(description='Test augmented dataloader with visualization')
-parser.add_argument('--num_samples', type=int, default=4,
-                    help='Number of samples to display (default: 4, includes 1 original + N augmented)')
-parser.add_argument('--image_idx', type=int, default=101,
-                    help='Index of image to test (default: 101)')
-args = parser.parse_args()
 
-print("="*80)
-print("TESTING AUGMENTED DATALOADER")
-print("="*80)
-print(f"\nConfiguration:")
-print(f"  - Number of samples: {args.num_samples} (1 original + {args.num_samples-1} augmented)")
-print(f"  - Image index: {args.image_idx}")
+def visualize_scale_augmentation(train_dataset, val_dataset=None, image_idx=101,
+                                  num_samples=4, save_path=None, show=True):
+    """
+    Visualize scale augmentation effects on a single image.
 
-# Create datasets
-print("\nCreating datasets...")
+    Args:
+        train_dataset: Dataset with augmentations enabled
+        val_dataset: Dataset without augmentations (for original). If None, uses train_dataset for all.
+        image_idx: Index of image to visualize
+        num_samples: Number of rows (1 original + N-1 augmented)
+        save_path: Path to save figure (optional)
+        show: Whether to display the figure
 
-# Training dataset with augmentations
-train_transform, train_mask_transform = get_transforms(IMAGE_SIZE, is_training=True)
-train_dataset = StreetHazardsDataset(
-    root_dir=TRAIN_ROOT,
-    split='training',
-    transform=train_transform,
-    mask_transform=train_mask_transform
-)
+    Returns:
+        fig: matplotlib Figure object
+    """
+    fig, axes = plt.subplots(num_samples, 3, figsize=(15, 4 * num_samples))
+    if num_samples == 1:
+        axes = axes.reshape(1, -1)
+    fig.suptitle(f'Scale Augmentation Visualization: Image Index {image_idx}', fontsize=16)
 
-# Validation dataset without augmentations (for original image)
-val_transform, val_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
-val_dataset = StreetHazardsDataset(
-    root_dir=TRAIN_ROOT,
-    split='training',
-    transform=val_transform,
-    mask_transform=val_mask_transform
-)
-
-print(f"✅ Dataset loaded: {len(train_dataset)} training samples")
-print(f"✅ Augmentations enabled:")
-print("   - Multi-scale random crop (0.5-2.0x) with variable crop sizes")
-print("   - Random horizontal flip")
-print("   - Color jitter (including hue)")
-print("   - Gaussian blur (50%)")
-print("   - NO rotation (commented out to avoid black edges)")
-
-# Test loading samples
-print(f"\nGenerating visualization with {args.num_samples} rows...")
-print(f"  - Row 1: Original image (no augmentation)")
-print(f"  - Rows 2-{args.num_samples}: Same image with different random augmentations")
-
-fig, axes = plt.subplots(args.num_samples, 3, figsize=(15, 4 * args.num_samples))
-if args.num_samples == 1:
-    axes = axes.reshape(1, -1)  # Ensure 2D array for single row
-fig.suptitle(f'Augmentation Test: Image Index {args.image_idx}', fontsize=16)
-
-idx = args.image_idx
-
-for i in range(args.num_samples):
-    try:
-        if i == 0:
-            # First row: Load original image without augmentations
-            image, mask, path = val_dataset[idx]
+    for i in range(num_samples):
+        if i == 0 and val_dataset is not None:
+            # First row: Original image without augmentations
+            image, mask, path = val_dataset[image_idx]
             row_title = "Original (No Augmentation)"
         else:
             # Subsequent rows: Load with augmentations
-            image, mask, path = train_dataset[idx]
-            row_title = f"Augmented #{i}"
+            image, mask, path = train_dataset[image_idx]
+            row_title = f"Scale Augmented #{i}" if i > 0 else "Augmented #0"
 
         # Denormalize image
         img_np = denormalize_image(image)
@@ -105,45 +70,126 @@ for i in range(args.num_samples):
         axes[i, 2].set_title(f"{row_title} - Overlay")
         axes[i, 2].axis('off')
 
-        print(f"✅ Row {i+1}/{args.num_samples}: {row_title} - Image shape {image.shape}, Mask shape {mask.shape}")
+    plt.tight_layout()
 
-    except Exception as e:
-        print(f"❌ Error loading row {i+1}: {e}")
-        import traceback
-        traceback.print_exc()
+    if save_path:
+        plt.savefig(save_path, dpi=100, bbox_inches='tight')
+        print(f"Saved to: {save_path}")
 
-plt.tight_layout()
-output_path = 'assets/augmented_dataloader_test.png'
-plt.savefig(output_path, dpi=100, bbox_inches='tight')
-print(f"\n✅ Test visualization saved to: {output_path}")
-print(f"   Figure size: {args.num_samples} rows × 3 columns")
-print(f"   Row 1: Original image without augmentations")
-print(f"   Rows 2-{args.num_samples}: Same image with random augmentations")
+    if show:
+        plt.show()
 
-# Test batch loading
-print("\nTesting batch loading...")
-from torch.utils.data import DataLoader
+    return fig
 
-loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=2)
 
-try:
-    batch_images, batch_masks, batch_paths = next(iter(loader))
-    print(f"✅ Batch loaded successfully!")
-    print(f"   Images shape: {batch_images.shape}")
-    print(f"   Masks shape: {batch_masks.shape}")
-    print(f"   Image dtype: {batch_images.dtype}")
-    print(f"   Mask dtype: {batch_masks.dtype}")
-    print(f"   Image range: [{batch_images.min():.2f}, {batch_images.max():.2f}]")
-    print(f"   Mask range: [{batch_masks.min()}, {batch_masks.max()}]")
-except Exception as e:
-    print(f"❌ Error loading batch: {e}")
-    import traceback
-    traceback.print_exc()
+def visualize_from_dataloader(dataset, num_samples=4, save_path=None, show=True, image_idx=0):
+    """
+    Visualize scale augmentation on a single image.
 
-print("\n" + "="*80)
-print("DATALOADER TEST COMPLETE!")
-print("="*80)
-print("\nIf you see this message and the visualization was saved,")
-print("the augmented dataloader is working correctly!")
-print("\nYou can now run: .venv/bin/python3 train_augmented_resnet50.py")
-print("="*80 + "\n")
+    First row shows original, remaining rows show augmented versions.
+
+    Args:
+        dataset: StreetHazardsDataset with augmentations enabled
+        num_samples: Number of rows (1 original + N-1 augmented)
+        save_path: Path to save figure (optional)
+        show: Whether to display the figure
+        image_idx: Index of image to visualize
+
+    Returns:
+        fig: matplotlib Figure object
+    """
+    fig, axes = plt.subplots(num_samples, 3, figsize=(15, 4 * num_samples))
+    if num_samples == 1:
+        axes = axes.reshape(1, -1)
+    fig.suptitle(f'Scale Augmentation - Image #{image_idx}', fontsize=16)
+
+    for i in range(num_samples):
+        if i == 0:
+            # First row: original image (no augmentation)
+            img_np, mask_np, path = dataset.get_raw_item(image_idx)
+            row_label = "Original"
+        else:
+            # Augmented versions
+            image, mask, path = dataset[image_idx]
+            img_np = denormalize_image(image)
+            mask_np = mask.numpy() if hasattr(mask, 'numpy') else np.array(mask)
+            row_label = f"Augmented #{i}"
+
+        mask_rgb = mask_to_rgb(mask_np)
+
+        # Create overlay
+        overlay = (img_np * 0.6 + mask_rgb * 0.4).astype(np.uint8)
+
+        # Display
+        axes[i, 0].imshow(img_np)
+        axes[i, 0].set_title(f"{row_label} - Image")
+        axes[i, 0].axis('off')
+
+        axes[i, 1].imshow(mask_rgb)
+        axes[i, 1].set_title(f"{row_label} - Mask")
+        axes[i, 1].axis('off')
+
+        axes[i, 2].imshow(overlay)
+        axes[i, 2].set_title(f"{row_label} - Overlay")
+        axes[i, 2].axis('off')
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=100, bbox_inches='tight')
+        print(f"Saved to: {save_path}")
+
+    if show:
+        plt.show()
+
+    return fig
+
+
+if __name__ == "__main__":
+    import argparse
+    from utils.dataloader import StreetHazardsDataset, get_transforms
+    from config import IMAGE_SIZE, TRAIN_ROOT
+
+    parser = argparse.ArgumentParser(description='Test scale augmentation visualization')
+    parser.add_argument('--num_samples', type=int, default=4,
+                        help='Number of samples to display (default: 4)')
+    parser.add_argument('--image_idx', type=int, default=101,
+                        help='Index of image to test (default: 101)')
+    args = parser.parse_args()
+
+    print("="*80)
+    print("SCALE AUGMENTATION TEST")
+    print("="*80)
+
+    # Create datasets with scale-only augmentation
+    train_transform, train_mask_transform = get_transforms(IMAGE_SIZE, is_training=True)
+    train_dataset = StreetHazardsDataset(
+        root_dir=TRAIN_ROOT,
+        split='training',
+        transform=train_transform,
+        mask_transform=train_mask_transform
+    )
+
+    val_transform, val_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
+    val_dataset = StreetHazardsDataset(
+        root_dir=TRAIN_ROOT,
+        split='training',
+        transform=val_transform,
+        mask_transform=val_mask_transform
+    )
+
+    print(f"Dataset loaded: {len(train_dataset)} samples")
+
+    # Visualize
+    visualize_scale_augmentation(
+        train_dataset,
+        val_dataset,
+        image_idx=args.image_idx,
+        num_samples=args.num_samples,
+        save_path='assets/augmented_dataloader_test.png',
+        show=False
+    )
+
+    print("="*80)
+    print("TEST COMPLETE!")
+    print("="*80)

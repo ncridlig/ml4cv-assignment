@@ -36,6 +36,7 @@ models/saved/
 # Output and Results
 outputs/
 results/
+!ablation_study/results/
 logs/
 wandb/
 assets/anomaly_detection/heat_log_*.txt

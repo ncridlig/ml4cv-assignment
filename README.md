@@ -4,197 +4,121 @@ ML4CV Assignment - Anomaly-Aware Semantic Segmentation for Autonomous Driving
 
 ## Project Overview
 
-This project implements a DeepLabV3+ semantic segmentation model with ResNet50 backbone for road scene understanding, enhanced with zero-shot anomaly detection capabilities. The model is trained on the StreetHazards dataset to segment 12 known road classes (road, sidewalk, building, wall, fence, pole, traffic light, traffic sign, vegetation, terrain, sky, person) while detecting unexpected objects (anomalies) without explicit training on anomalous examples.
+This project implements a DeepLabV3+ semantic segmentation model with ResNet50 backbone for road scene understanding, enhanced with zero-shot anomaly detection capabilities. The model is trained on the StreetHazards dataset to segment 12 known road classes while detecting unexpected objects (anomalies) without explicit training on anomalous examples.
+
+## Key Results
+
+| Metric | Our Model | Authors' Baseline |
+|--------|-----------|-------------------|
+| **Segmentation mIoU** | **50.26%** | ~37% |
+| **Anomaly AUROC** | **90.50%** | 89.30% |
+| Anomaly AUPR | 8.43% | 10.60% |
+| Anomaly FPR95 | 33.12% | 26.50% |
 
 **Key Achievements**:
-- **Closed-Set Segmentation**: 50.26% mIoU on test set (+12.69% over baseline through multi-scale augmentation)
-- **Anomaly Detection**: 90.50% AUROC with Simple Max Logits method (beats authors' baseline of 89.30%)
-- **Multi-Scale Augmentation**: Novel variable crop strategy (0.5-2.0× scale range) for improved robustness
+- +33.8% relative improvement in segmentation through multi-scale augmentation
+- Beats authors' AUROC baseline with zero-shot Simple Max Logits method
+- Systematic evaluation: 4 architectures, 3 anomaly methods, 2 ablation studies
 
-## Model Weights
+## Quick Start
 
-Due to file size limitations (161MB), the trained model weights are available via OneDrive:
-
-**Download Link**: [INSERT ONEDRIVE LINK HERE]
-
-After downloading, place the model file in the `models/` directory:
-```
-models/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth
-```
-
-## System Requirements
-
-- **OS**: Linux (tested on WSL2 with Ubuntu)
-- **CUDA**: v12.9
-- **Python**: 3.12
-- **GPU**: NVIDIA GPU with at least 8GB VRAM (for inference; training requires 16GB+)
-- **RAM**: 16GB minimum
-- **Disk Space**: ~10GB for datasets + models
-
-## Setup Instructions
-
-### 1. Install Dependencies
-
-Create a virtual environment and install required packages:
+### 1. Setup Environment
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
-### 2. Download Datasets
-
-Download the StreetHazards and BDD-Anomaly datasets:
+### 2. Download Dataset
 ```bash
-chmod +x download.sh
-./download.sh
-```
-
-Expected dataset sizes:
-- StreetHazards: ~5GB (5,125 train + 1,031 validation + 1,500 test images)
-- BDD-Anomaly: ~3GB (additional test set)
-
-Verify datasets loaded correctly:
-```bash
-python3 dataloader.py
-```
-
-Expected output:
-```
-Train samples: 8125
-Validation samples: 4187
-Test samples: 3000
-Batch shape: torch.Size([32, 3, 224, 224])
+chmod +x download_dataset.sh
+./download_dataset.sh
 ```
 
 ### 3. Download Model Weights
+Download trained weights (161MB) from OneDrive: [INSERT LINK]
 
-Download the trained model from the OneDrive link above and place it in `models/` directory. The project uses this model path by default (configured in `config.py`):
-```
-models/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth
-```
+Place in: `models/checkpoints/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth`
 
-## Running the Project
-
-### Main Jupyter Notebook (Primary Deliverable)
-
-The complete project demonstration is in `main.ipynb`:
-
+### 4. Run Notebook
 ```bash
-source .venv/bin/activate
 jupyter notebook main.ipynb
-```
-
-**Expected Runtime**: ~30-45 minutes (with GPU)
-- Model loading and setup: ~1 minute
-- Qualitative evaluation visualizations: ~5 minutes
-- Quantitative metrics computation: ~10 minutes
-- Anomaly detection evaluation: ~15-20 minutes
-- Ablation study plots: ~5 minutes
-
-**Note**: The notebook loads pre-computed visualizations from `assets/` to reduce runtime. All code is included and can be re-run to regenerate results.
-
-### Individual Scripts
-
-**Closed-Set Segmentation Evaluation**:
-```bash
-python3 evaluate.py
-```
-
-**Anomaly Detection Methods**:
-```bash
-# Simple Max Logits (Best: AUROC 90.50%)
-python3 anomaly_detection/simple_max_logits.py
-
-# Maximum Softmax Probability
-python3 anomaly_detection/maximum_softmax_probability.py
-
-# Standardized Max Logits
-python3 anomaly_detection/standardized_max_logits.py
-
-# Energy Score
-python3 anomaly_detection/energy_score_anomaly_detection.py
-
-# HEAT (Hybrid Energy-Adaptive Thresholding)
-python3 anomaly_detection/heat_anomaly_detection.py
-```
-
-**Ablation Studies**:
-```bash
-python3 ablation_studies.py
 ```
 
 ## Project Structure
 
 ```
-.
-├── main.ipynb                          # Primary deliverable (50+ cells)
-├── config.py                           # Central configuration
-├── dataloader.py                       # Dataset loading utilities
-├── deeplabv3plus_resnet50.py          # Model architecture
-├── train.py                            # Training script (multi-scale augmentation)
-├── evaluate.py                         # Closed-set segmentation evaluation
-├── ablation_studies.py                # Ablation study comparisons
-├── models/                             # Model training and checkpoints
-│   ├── training_scripts/              # PyTorch training scripts
-│   └── checkpoints/                   # Trained model weights (.pth files)
-├── anomaly_detection/                 # Anomaly detection methods
-│   ├── simple_max_logits.py          # Method #1 (Best: AUROC 90.50%)
-│   ├── maximum_softmax_probability.py # Method #2
-│   ├── standardized_max_logits.py    # Method #3
-│   ├── energy_score_anomaly_detection.py # Method #4
-│   └── heat_anomaly_detection.py     # Method #5 (HEAT)
-├── assets/                             # Pre-computed visualizations
-│   ├── qualitative_eval/              # Segmentation samples
-│   └── anomaly_detection/             # Anomaly detection samples
-├── log.md                              # Detailed experiment log
-└── README-ORIGINAL.md                  # Assignment instructions
+ml4cv-assignment/
+├── main.ipynb                      # Primary deliverable
+├── config.py                       # Central configuration
+├── utils/
+│   ├── dataloader.py              # Dataset loading & augmentation
+│   ├── model_utils.py             # Model loading utilities
+│   └── visualize.py               # Visualization helpers
+├── models/
+│   ├── training_scripts/          # Training scripts
+│   └── checkpoints/               # Model weights
+├── anomaly_detection/
+│   ├── simple_max_logits.py       # Best: 90.50% AUROC
+│   ├── maximum_softmax_probability.py
+│   ├── standardized_max_logits.py
+│   ├── energy_score_anomaly_detection.py
+│   └── heat_anomaly_detection.py
+├── ablation_study/
+│   ├── augmentation_ablation.py   # Augmentation study
+│   ├── scale_range_ablation.py    # Scale range study
+│   └── results/                   # Ablation results & plots
+├── visualizations/                # Comparison scripts
+├── assets/                        # Pre-computed visualizations
+└── log.md                         # Development log
 ```
 
-## Results Summary
+## Methodology
 
-### Closed-Set Segmentation
+### Multi-Scale Augmentation
+Variable crop sizes proportional to scale factor (0.5-2.0×):
+- Scale 0.5×: 256×256 crop → 512×512 (fine details)
+- Scale 1.0×: 512×512 crop → 512×512 (normal view)
+- Scale 2.0×: 1024×1024 crop → 512×512 (context)
 
-| Model | Augmentation | Train mIoU | Val mIoU | Test mIoU |
-|-------|-------------|------------|----------|-----------|
-| ResNet50 Baseline | Weak (horizontal flip, crop) | 62.4% | 37.1% | 37.57% |
-| **ResNet50 (Ours)** | **Multi-Scale (0.5-2.0×)** | **75.9%** | **50.2%** | **50.26%** |
-
-**Improvement**: +12.69% mIoU through multi-scale augmentation
-
-### Anomaly Detection
-
-| Method | FPR95 | AUROC | AUPR |
-|--------|-------|-------|------|
-| **Simple Max Logits (Ours)** | 33.12% | **90.50%** | 8.43% |
-| Maximum Softmax Probability | 33.57% | 86.71% | 6.21% |
-| Standardized Max Logits | 83.91% | 80.25% | 5.41% |
-| Authors' Baseline | **26.50%** | 89.30% | **10.60%** |
-
-**Key Finding**: Simple Max Logits beats baseline AUROC (90.50% vs 89.30%)
-
-## Methodology Highlights
-
-### Multi-Scale Augmentation Strategy
-
-Our key innovation is **variable crop sizes** proportional to scale factor:
-- Scale 0.5×: Crop 256×256 → Resize to 512×512 (zoomed-out view)
-- Scale 1.0×: Crop 512×512 → Resize to 512×512 (normal view)
-- Scale 2.0×: Crop 1024×1024 → Resize to 512×512 (zoomed-in view)
-
-This approach provides natural multi-scale context **without black padding artifacts**, teaching the model to handle objects at different distances.
+No black padding artifacts—crop size adapts to scale.
 
 ### Zero-Shot Anomaly Detection
+Simple Max Logits: `anomaly_score = -max(logits)`
+- No training on anomalies required
+- Outperforms complex normalized methods
+- 90.50% AUROC (beats 89.30% baseline)
 
-All three methods detect anomalies **without training on anomalous examples**:
-- **Simple Max Logits**: Uses raw logit magnitudes as confidence measure
-- **Maximum Softmax Probability**: Uses normalized probabilities
-- **Standardized Max Logits**: Normalizes by class-specific statistics
+## Ablation Studies
+
+### Augmentation Ablation
+| Configuration | Val mIoU | AUROC |
+|--------------|----------|-------|
+| No Augmentation | 56.29% | 88.5% |
+| +Scale | 51.76% | **91.4%** |
+| +Scale+Rotate+Flip+Color | 48.13% | 90.8% |
+
+**Finding**: Scale-only augmentation optimizes anomaly detection.
+
+### Scale Range Ablation
+| Range | Val mIoU | AUROC |
+|-------|----------|-------|
+| (0.5, 1.5) Zoom-In | **51.43%** | 90.5% |
+| (0.5, 2.0) Baseline | 49.90% | **91.2%** |
+| (0.9, 1.1) Minimal | 49.27% | 90.6% |
+
+**Finding**: Zoom-in emphasis (0.5-1.5) best for segmentation; baseline (0.5-2.0) best for anomaly detection.
+
+## System Requirements
+
+- Python 3.12, CUDA 12.9
+- GPU: 8GB+ VRAM (inference), 16GB+ (training)
+- RAM: 16GB minimum
+- Disk: ~10GB for datasets + models
 
 ## Citation
 
-Dataset and baseline from:
-```
+```bibtex
 @inproceedings{hendrycks2019anomaly,
   title={Scaling Out-of-Distribution Detection for Real-World Settings},
   author={Hendrycks, Dan and Basart, Steven and Mazeika, Mantas and others},
@@ -205,4 +129,4 @@ Dataset and baseline from:
 
 ## License
 
-Academic use only - ML4CV course assignment.
+Academic use only - ML4CV course assignment, University of Bologna (A.Y. 2024-2025).
