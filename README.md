@@ -2,6 +2,20 @@
 
 ML4CV Assignment - Anomaly-Aware Semantic Segmentation for Autonomous Driving
 
+## Repository
+
+This `README.md` and `main.ipynb` can be viewed statically. To run the project, clone the full repository:
+
+```bash
+# HTTPS
+git clone https://github.com/ncridlig/ml4cv-assignment.git
+
+# SSH
+git clone git@github.com:ncridlig/ml4cv-assignment.git
+```
+
+---
+
 ## Prerequisites (Before Running)
 
 ### 1. Download Model Weights (Required)
@@ -12,20 +26,26 @@ Download trained weights from OneDrive and place in project:
 | DeepLabV3+ ResNet50 | 161 MB | [link](https://liveunibo-my.sharepoint.com/:u:/g/personal/nicolasivan_cridlig_studio_unibo_it/IQCd1DjuDEWiR4pS0ZZTOSXuAcU_ho1uchFRqCiWSigcKBo?e=2jRYnP) | `ablation_study/checkpoints/+Scale__20_52_19-11-25_mIoU_0.5176_size_512x512.pth` |
 | SegFormer-B5 | 324 MB | [link](https://liveunibo-my.sharepoint.com/:u:/g/personal/nicolasivan_cridlig_studio_unibo_it/IQDY4WynaES6Rpc1P5TJdImVASXArqDTHB3PRpq_-pklIzc?e=6MNbBT) | `models/checkpoints/segformer_b5_streethazards_augmented_10_06_12-11-25_mIoU_5412.pth` |
 
+```bash
+# Create directories first
+mkdir -p ablation_study/checkpoints models/checkpoints
+```
+
 ### 2. Download Dataset
 ```bash
-chmod +x download_dataset.sh
 ./download_dataset.sh
 ```
-Downloads StreetHazards dataset (~8 GB): 5,125 train + 1,031 val + 1,500 test images
+
+> **Tip:** If you already have the dataset, simply copy `streethazards_test/` and `streethazards_train/` to the repository root.
 
 ### 3. Install Dependencies
+**Requires Python 3.12+**
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Install project as package (required for imports to work)
+# Install project as package (required for imports)
 pip install -e .
 ```
 
