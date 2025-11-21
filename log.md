@@ -917,6 +917,57 @@ scale_crop = JointRandomScaleCrop(output_size=self.image_size, scale_range=scale
 
 ---
 
-*Last updated: 2025-11-20*
-*Total time: 41.9 / 50 hours*
-*Status: Two ablation studies complete (augmentation + threshold sensitivity), model selection analysis documented, ready for final documentation*
+## Day 10: Final Documentation & Submission Prep (2 hours)
+
+### Date: 2025-11-21
+
+**Completed Tasks:**
+1. Finalized `main.ipynb` with all sections complete
+2. Updated README.md with prerequisites at top, clear model download instructions
+3. Added scale augmentation visualization function to `utils/test_augmented_dataloader.py`
+4. Modified `.gitignore` to track `ablation_study/results/` (needed for notebook)
+5. Staged all necessary assets for notebook to run (qualitative visualizations, ablation results)
+6. Verified notebook compatibility:
+   - No hardcoded paths ✓
+   - All assets present ✓
+   - CUDA/CPU auto-detection ✓
+   - Model weights documented ✓
+
+**Files Modified:**
+- `README.md` - Added prerequisites section with OneDrive links placeholder
+- `utils/test_augmented_dataloader.py` - Refactored for notebook import
+- `.gitignore` - Added exception for ablation_study/results/
+- `log.md` - Updated with final status
+
+**Submission Preparation:**
+- Max 20 files × 20 MB each (Virtuale limit)
+- Solution: ZIP archive + OneDrive links for model weights
+- Model weights to upload:
+  - `+Scale__20_52_19-11-25_mIoU_0.5176_size_512x512.pth` (161 MB)
+  - `segformer_b5_streethazards_augmented_10_06_12-11-25_mIoU_5412.pth` (324 MB)
+
+**Status**: Project complete, ready for submission after OneDrive upload
+
+---
+
+## References
+
+**Key Papers**:
+1. Hendrycks et al. - "Scaling OOD Detection" (StreetHazards dataset)
+2. Jung et al. - "Standardized Max Logits" (SML method)
+3. Liu et al. - "Energy-based OOD Detection" (Energy Score)
+4. Chen et al. - "DeepLabV3+" (architecture)
+
+**Authors' Baseline (StreetHazards)**:
+- Method: Max Logits
+- FPR95: 26.5%, AUROC: 89.3%, AUPR: 10.6%
+
+**Our Best Result**:
+- Method: Simple Max Logits on augmented model
+- FPR95: 33.12%, **AUROC: 90.50%** (beats baseline), AUPR: 8.43%
+
+---
+
+*Last updated: 2025-11-21*
+*Total time: ~53 / 50 hours (slightly over budget)*
+*Status: PROJECT COMPLETE - Ready for submission*

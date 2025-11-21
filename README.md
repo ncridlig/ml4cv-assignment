@@ -66,15 +66,15 @@ This project implements a DeepLabV3+ semantic segmentation model with ResNet50 b
 
 | Metric | Our Model | Authors' Baseline |
 |--------|-----------|-------------------|
-| **Segmentation mIoU** | **50.26%** | ~37% |
-| **Anomaly AUROC** | **90.50%** | 89.30% |
-| Anomaly AUPR | 8.43% | 10.60% |
-| Anomaly FPR95 | 33.12% | 26.50% |
+| **Segmentation mIoU** | **51.76%** | ~37% |
+| **Anomaly AUROC** | **91.40%** | 89.30% |
+| Anomaly AUPR | 8.50% | 10.60% |
+| Anomaly FPR95 | 27.30% | 26.50% |
 
 **Key Achievements**:
-- +33.8% relative improvement in segmentation through multi-scale augmentation
+- +37.8% relative improvement in segmentation through multi-scale augmentation
 - Beats authors' AUROC baseline with zero-shot Simple Max Logits method
-- Systematic evaluation: 4 architectures, 3 anomaly methods, 2 ablation studies
+- Systematic evaluation: 3 architectures, 5 anomaly methods, 3 ablation studies
 
 ## Quick Start
 
@@ -98,7 +98,7 @@ ml4cv-assignment/
 │   ├── training_scripts/          # Training scripts
 │   └── checkpoints/               # Model weights
 ├── anomaly_detection/
-│   ├── simple_max_logits.py       # Best: 90.50% AUROC
+│   ├── simple_max_logits.py       # Best: 91.4% AUROC
 │   ├── maximum_softmax_probability.py
 │   ├── standardized_max_logits.py
 │   ├── energy_score_anomaly_detection.py
@@ -126,7 +126,7 @@ No black padding artifacts—crop size adapts to scale.
 Simple Max Logits: `anomaly_score = -max(logits)`
 - No training on anomalies required
 - Outperforms complex normalized methods
-- 90.50% AUROC (beats 89.30% baseline)
+- 91.4% AUROC (beats 89.30% baseline)
 
 ## Ablation Studies
 
