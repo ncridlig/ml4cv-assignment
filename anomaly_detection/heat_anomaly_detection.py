@@ -1,5 +1,6 @@
 """
 HEAT: Hybrid Energy-Adaptive Thresholding for Anomaly Detection
+Implemented for DeeplabV3 and Hiera architectures.
 
 Combines three complementary anomaly scores:
 1. Energy Score (logit-space) - Robust baseline
@@ -92,23 +93,72 @@ def compute_energy_score(logits, temperature=1.0):
 class FeatureExtractor:
     """Extract intermediate features from model."""
 
-    def __init__(self, model, layer_name='backbone.layer3'):
+    def __init__(self, model, layer_name='backbone.layer3', architecture='deeplabv3_resnet50'):
         self.features = None
         self.layer_name = layer_name
+        self.architecture = architecture
+
+        # Determine layer name based on architecture
+        if architecture == 'hiera_large_224':
+            # For Hiera Large (48 blocks total, 4 stages), extract from late stage
+            # Use block 35 (stage 3/4 boundary) for rich semantic features
+            layer_name = 'backbone.blocks.35'
+            logger.info(f"Using Hiera layer: {layer_name} (block 35/48, late-stage features)")
+        elif 'deeplabv3' in architecture or 'fcn' in architecture:
+            # For ResNet-based models, use layer3
+            layer_name = 'backbone.layer3'
+            logger.info(f"Using ResNet layer: {layer_name}")
+        else:
+            logger.warning(f"Unknown architecture {architecture}, using default layer: {layer_name}")
 
         # Register hook
-        layer = dict(model.named_modules())[layer_name]
-        layer.register_forward_hook(self.hook)
+        try:
+            layer = dict(model.named_modules())[layer_name]
+            layer.register_forward_hook(self.hook)
+            logger.info(f"✅ Successfully registered hook on {layer_name}")
+        except KeyError:
+            logger.error(f"Layer {layer_name} not found in model!")
+            logger.info("Available layers:")
+            for name, _ in model.named_modules():
+                if 'layer' in name.lower() or 'stage' in name.lower():
+                    logger.info(f"  - {name}")
+            raise
 
     def hook(self, module, input, output):
-        self.features = output
+        # Handle different output formats
+        if len(output.shape) == 3:
+            # [B, N, D] format - need to reshape
+            # For Hiera, this might be [B, H*W, D]
+            B, N, D = output.shape
+            # Assume square spatial dimensions
+            H = W = int(N ** 0.5)
+            if H * W == N:
+                # Reshape to [B, H, W, D] then convert to [B, D, H, W]
+                self.features = output.reshape(B, H, W, D).permute(0, 3, 1, 2)
+                logger.info(f"Reshaped features from [B, N, D] to [B, D, H, W]: {output.shape} -> {self.features.shape}")
+            else:
+                logger.warning(f"Unexpected feature shape: {output.shape}, using as-is")
+                self.features = output
+        elif len(output.shape) == 4:
+            # [B, H, W, C] or [B, C, H, W] format
+            if self.architecture == 'hiera_large_224':
+                # Hiera uses channels-last, check and convert if needed
+                if output.shape[3] < output.shape[1]:  # Likely [B, H, W, C]
+                    self.features = output.permute(0, 3, 1, 2)  # Convert to [B, C, H, W]
+                else:
+                    self.features = output
+            else:
+                self.features = output
+        else:
+            logger.warning(f"Unexpected feature shape: {output.shape}")
+            self.features = output
 
     def get_features(self):
         return self.features
 
 
 @torch.no_grad()
-def compute_class_statistics(model, train_loader, device, num_classes=13, layer_name='backbone.layer3'):
+def compute_class_statistics(model, train_loader, device, num_classes=13, layer_name='backbone.layer3', architecture='deeplabv3_resnet50'):
     """
     Compute mean and tied covariance for each class.
 
@@ -121,9 +171,9 @@ def compute_class_statistics(model, train_loader, device, num_classes=13, layer_
     logger.info("="*80)
     logger.info("COMPUTING CLASS STATISTICS FOR MAHALANOBIS DISTANCE")
     logger.info("="*80)
-    logger.info(f"Layer: {layer_name}")
+    logger.info(f"Architecture: {architecture}")
 
-    feature_extractor = FeatureExtractor(model, layer_name=layer_name)
+    feature_extractor = FeatureExtractor(model, layer_name=layer_name, architecture=architecture)
 
     # Collect features per class
     class_features = {c: [] for c in range(num_classes)}
@@ -382,15 +432,16 @@ class HEAT:
 
     def __init__(self, model, class_means, cov_inv, device,
                  temperature=1.0, alpha=0.9, kernel_size=3,
-                 layer_name='backbone.layer3'):
+                 layer_name='backbone.layer3', architecture='deeplabv3_resnet50'):
         self.model = model
         self.class_means = class_means
         self.cov_inv = cov_inv
         self.device = device
         self.temperature = temperature
         self.kernel_size = kernel_size
+        self.architecture = architecture
 
-        self.feature_extractor = FeatureExtractor(model, layer_name=layer_name)
+        self.feature_extractor = FeatureExtractor(model, layer_name=layer_name, architecture=architecture)
         self.normalizer = AdaptiveNormalizer(alpha=alpha)
 
     @torch.no_grad()
@@ -404,8 +455,15 @@ class HEAT:
         Returns:
             anomaly_scores: (B, H, W)
         """
-        # Forward pass
-        logits = self.model(images)['out']
+        # Forward pass - handle different model output formats
+        output = self.model(images)
+        if isinstance(output, dict):
+            # torchvision models (DeepLabV3, FCN)
+            logits = output['out']
+        else:
+            # Direct logits (Hiera, SegFormer)
+            logits = output
+
         features = self.feature_extractor.get_features()
 
         # Softmax probabilities
@@ -517,14 +575,32 @@ class HEAT:
 # MAIN
 # ============================================================================
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description='HEAT Anomaly Detection')
+    parser.add_argument('--model-path', type=str, default=MODEL_PATH, help='Path to model checkpoint')
+    parser.add_argument('--architecture', type=str, default='deeplabv3_resnet50',
+                        choices=['deeplabv3_resnet50', 'deeplabv3_resnet101', 'fcn_resnet50',
+                                'segformer_b5', 'hiera_large_224'],
+                        help='Model architecture')
+    parser.add_argument('--image-size', type=int, nargs=2, default=[512, 512],
+                        help='Image size (H W)')
+    args = parser.parse_args()
+
+    MODEL_PATH = args.model_path
+    ARCHITECTURE = args.architecture
+    IMAGE_SIZE = tuple(args.image_size)
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Paths for cached statistics
-    stats_path = OUTPUT_DIR / 'feature_statistics.pkl'
+    # Paths for cached statistics (unique per architecture)
+    stats_path = OUTPUT_DIR / f'feature_statistics_{ARCHITECTURE}.pkl'
 
     # Load model
     logger.info("Loading model...")
-    model = load_model(MODEL_PATH, DEVICE)
+    logger.info(f"Architecture: {ARCHITECTURE}")
+    logger.info(f"Image size: {IMAGE_SIZE}")
+    model = load_model(MODEL_PATH, DEVICE, architecture=ARCHITECTURE)
 
     # Load datasets
     logger.info("Loading datasets...")
@@ -553,7 +629,7 @@ if __name__ == "__main__":
     else:
         logger.info("Computing feature statistics (this will take several minutes)...")
         class_means, cov = compute_class_statistics(
-            model, train_loader, DEVICE, num_classes=NUM_CLASSES
+            model, train_loader, DEVICE, num_classes=NUM_CLASSES, architecture=ARCHITECTURE
         )
 
         # Save statistics
@@ -576,7 +652,8 @@ if __name__ == "__main__":
         device=DEVICE,
         temperature=1.0,
         alpha=0.9,
-        kernel_size=3
+        kernel_size=3,
+        architecture=ARCHITECTURE
     )
 
     # Evaluate
@@ -592,10 +669,11 @@ if __name__ == "__main__":
         f.write("CONFIGURATION\n")
         f.write("-"*80 + "\n")
         f.write(f"Model: {MODEL_PATH}\n")
+        f.write(f"Architecture: {ARCHITECTURE}\n")
+        f.write(f"Image size: {IMAGE_SIZE}\n")
         f.write(f"Temperature: 1.0\n")
         f.write(f"EMA alpha: 0.9\n")
-        f.write(f"Spatial kernel: 3x3\n")
-        f.write(f"Feature layer: backbone.layer3\n\n")
+        f.write(f"Spatial kernel: 3x3\n\n")
 
         f.write("RESULTS\n")
         f.write("-"*80 + "\n")

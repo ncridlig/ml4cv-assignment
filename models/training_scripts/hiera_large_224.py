@@ -47,17 +47,18 @@ from config import (
 IMAGE_SIZE = (224, 224)  # Override config.py IMAGE_SIZE - MUST BE TUPLE!
 NUM_CLASSES_TRAIN = 13  # Train on 0-12, ignore 13 (anomaly)
 
-print("="*60)
-print("HIERA LARGE SEMANTIC SEGMENTATION TRAINING")
-print("="*60)
-print(f"Device: {DEVICE}")
-print(f"Batch size: {BATCH_SIZE}")
-print(f"Learning rate: {LR}")
-print(f"Epochs: {EPOCHS}")
-print(f"Image size: {IMAGE_SIZE[0]}×{IMAGE_SIZE[1]} (Hiera Large pretrained resolution)")
-print(f"Number of classes: 13 (ignoring anomaly class 13)")
-print(f"GPU: Optimized for 16GB VRAM")
-print("="*60)
+if __name__ == "__main__":
+    print("="*60)
+    print("HIERA LARGE SEMANTIC SEGMENTATION TRAINING")
+    print("="*60)
+    print(f"Device: {DEVICE}")
+    print(f"Batch size: {BATCH_SIZE}")
+    print(f"Learning rate: {LR}")
+    print(f"Epochs: {EPOCHS}")
+    print(f"Image size: {IMAGE_SIZE[0]}×{IMAGE_SIZE[1]} (Hiera Large pretrained resolution)")
+    print(f"Number of classes: 13 (ignoring anomaly class 13)")
+    print(f"GPU: Optimized for 16GB VRAM")
+    print("="*60)
 
 # -----------------------------
 # HIERA SEGMENTATION MODEL
@@ -209,258 +210,262 @@ class HieraSegmentation(nn.Module):
 
 
 # -----------------------------
-# DATASETS
+# MAIN - Only run training when executed as script
 # -----------------------------
-print("\nLoading datasets...")
-train_transform, train_mask_transform = get_transforms(IMAGE_SIZE, is_training=True)
-val_test_transform, val_test_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
+if __name__ == "__main__":
+    # -----------------------------
+    # DATASETS
+    # -----------------------------
+    print("\nLoading datasets...")
+    train_transform, train_mask_transform = get_transforms(IMAGE_SIZE, is_training=True)
+    val_test_transform, val_test_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
 
-train_dataset = StreetHazardsDataset(
-    root_dir=TRAIN_ROOT,
-    split='training',
-    transform=train_transform,
-    mask_transform=train_mask_transform,
-    image_size=IMAGE_SIZE  # Pass 224x224 override
-)
-val_dataset = StreetHazardsDataset(
-    root_dir=TRAIN_ROOT,
-    split='validation',
-    transform=val_test_transform,
-    mask_transform=val_test_mask_transform,
-    image_size=IMAGE_SIZE  # Pass 224x224 override
-)
-
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True,
-    num_workers=NUM_WORKERS,
-    drop_last=True
-)
-val_loader = DataLoader(
-    val_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=NUM_WORKERS
-)
-
-print(f"✅ Training samples: {len(train_dataset)}")
-print(f"✅ Validation samples: {len(val_dataset)}")
-print(f"✅ Training batches: {len(train_loader)}")
-print(f"✅ Validation batches: {len(val_loader)}")
-
-# -----------------------------
-# TENSORBOARD SETUP
-# -----------------------------
-writer = SummaryWriter(log_dir="models/runs/hiera_large_streethazards")
-
-# -----------------------------
-# MODEL
-# -----------------------------
-# Use Hiera-Large for more accuracy
-model = HieraSegmentation(
-    backbone_name='hiera_large_224', 
-    num_classes=NUM_CLASSES,
-    pretrained=True
-)
-
-model.to(DEVICE)
-
-# Calculate model parameters
-total_params = sum(p.numel() for p in model.parameters()) / 1e6
-trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6
-print(f"\n✅ Model loaded to {DEVICE}")
-print(f"✅ Total parameters: {total_params:.1f}M")
-print(f"✅ Trainable parameters: {trainable_params:.1f}M")
-
-# -----------------------------
-# LOSS, OPTIMIZER, SCHEDULER
-# -----------------------------
-criterion = nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX)
-optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
-scheduler = ReduceLROnPlateau(optimizer, mode='max', patience=5, factor=0.5)
-
-print(f"\n✅ Optimizer: AdamW (lr={LR}, weight_decay=0.01)")
-print(f"✅ Scheduler: ReduceLROnPlateau (patience=5, factor=0.5)")
-print(f"✅ Loss: CrossEntropyLoss (ignore_index={IGNORE_INDEX})")
-
-# -----------------------------
-# METRICS
-# -----------------------------
-def compute_iou(preds, labels, num_classes=13, ignore_index=13):
-    """Compute mean IoU (ignoring anomaly class)."""
-    preds = torch.argmax(preds, dim=1)
-    ious = []
-    for cls in range(num_classes):
-        if cls == ignore_index:
-            continue
-        pred_inds = preds == cls
-        target_inds = labels == cls
-        intersection = (pred_inds & target_inds).sum().item()
-        union = (pred_inds | target_inds).sum().item()
-        if union == 0:
-            continue
-        ious.append(intersection / union)
-    return np.mean(ious) if ious else 0.0
-
-# -----------------------------
-# TRAIN / VALIDATE
-# -----------------------------
-def train_one_epoch(model, loader, optimizer, loss_fn, epoch):
-    model.train()
-    total_loss = 0.0
-    total_iou = 0.0
-
-    pbar = tqdm(loader, desc=f"Training Epoch {epoch}")
-    for i, (images, masks, _) in enumerate(pbar):
-        images, masks = images.to(DEVICE), masks.to(DEVICE)
-        optimizer.zero_grad()
-
-        # Forward pass
-        logits = model(images)
-
-        # Compute loss
-        loss = loss_fn(logits, masks)
-        loss.backward()
-        optimizer.step()
-
-        # Compute IoU for monitoring
-        with torch.no_grad():
-            iou = compute_iou(logits, masks)
-
-        total_loss += loss.item()
-        total_iou += iou
-
-        # Update progress bar
-        pbar.set_postfix({
-            'loss': f'{loss.item():.4f}',
-            'iou': f'{iou:.4f}'
-        })
-
-        if (i + 1) % PRINT_FREQ == 0:
-            avg_loss = total_loss / (i + 1)
-            avg_iou = total_iou / (i + 1)
-            print(f"  Batch [{i+1}/{len(loader)}] Loss: {loss.item():.4f}, IoU: {iou:.4f}, Avg Loss: {avg_loss:.4f}, Avg IoU: {avg_iou:.4f}")
-
-    return total_loss / len(loader), total_iou / len(loader)
-
-
-def validate(model, loader, loss_fn, epoch):
-    model.eval()
-    total_loss, total_iou = 0.0, 0.0
-
-    with torch.no_grad():
-        pbar = tqdm(loader, desc=f"Validation Epoch {epoch}")
-        for images, masks, _ in pbar:
+    train_dataset = StreetHazardsDataset(
+        root_dir=TRAIN_ROOT,
+        split='training',
+        transform=train_transform,
+        mask_transform=train_mask_transform,
+        image_size=IMAGE_SIZE  # Pass 224x224 override
+    )
+    val_dataset = StreetHazardsDataset(
+        root_dir=TRAIN_ROOT,
+        split='validation',
+        transform=val_test_transform,
+        mask_transform=val_test_mask_transform,
+        image_size=IMAGE_SIZE  # Pass 224x224 override
+    )
+    
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=NUM_WORKERS,
+        drop_last=True
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=NUM_WORKERS
+    )
+    
+    print(f"✅ Training samples: {len(train_dataset)}")
+    print(f"✅ Validation samples: {len(val_dataset)}")
+    print(f"✅ Training batches: {len(train_loader)}")
+    print(f"✅ Validation batches: {len(val_loader)}")
+    
+    # -----------------------------
+    # TENSORBOARD SETUP
+    # -----------------------------
+    writer = SummaryWriter(log_dir="models/runs/hiera_large_streethazards")
+    
+    # -----------------------------
+    # MODEL
+    # -----------------------------
+    # Use Hiera-Large for more accuracy
+    model = HieraSegmentation(
+        backbone_name='hiera_large_224', 
+        num_classes=NUM_CLASSES,
+        pretrained=True
+    )
+    
+    model.to(DEVICE)
+    
+    # Calculate model parameters
+    total_params = sum(p.numel() for p in model.parameters()) / 1e6
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6
+    print(f"\n✅ Model loaded to {DEVICE}")
+    print(f"✅ Total parameters: {total_params:.1f}M")
+    print(f"✅ Trainable parameters: {trainable_params:.1f}M")
+    
+    # -----------------------------
+    # LOSS, OPTIMIZER, SCHEDULER
+    # -----------------------------
+    criterion = nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX)
+    optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
+    scheduler = ReduceLROnPlateau(optimizer, mode='max', patience=5, factor=0.5)
+    
+    print(f"\n✅ Optimizer: AdamW (lr={LR}, weight_decay=0.01)")
+    print(f"✅ Scheduler: ReduceLROnPlateau (patience=5, factor=0.5)")
+    print(f"✅ Loss: CrossEntropyLoss (ignore_index={IGNORE_INDEX})")
+    
+    # -----------------------------
+    # METRICS
+    # -----------------------------
+    def compute_iou(preds, labels, num_classes=13, ignore_index=13):
+        """Compute mean IoU (ignoring anomaly class)."""
+        preds = torch.argmax(preds, dim=1)
+        ious = []
+        for cls in range(num_classes):
+            if cls == ignore_index:
+                continue
+            pred_inds = preds == cls
+            target_inds = labels == cls
+            intersection = (pred_inds & target_inds).sum().item()
+            union = (pred_inds | target_inds).sum().item()
+            if union == 0:
+                continue
+            ious.append(intersection / union)
+        return np.mean(ious) if ious else 0.0
+    
+    # -----------------------------
+    # TRAIN / VALIDATE
+    # -----------------------------
+    def train_one_epoch(model, loader, optimizer, loss_fn, epoch):
+        model.train()
+        total_loss = 0.0
+        total_iou = 0.0
+    
+        pbar = tqdm(loader, desc=f"Training Epoch {epoch}")
+        for i, (images, masks, _) in enumerate(pbar):
             images, masks = images.to(DEVICE), masks.to(DEVICE)
-
+            optimizer.zero_grad()
+    
             # Forward pass
             logits = model(images)
-
-            # Compute loss and IoU
+    
+            # Compute loss
             loss = loss_fn(logits, masks)
-            iou = compute_iou(logits, masks)
-
+            loss.backward()
+            optimizer.step()
+    
+            # Compute IoU for monitoring
+            with torch.no_grad():
+                iou = compute_iou(logits, masks)
+    
             total_loss += loss.item()
             total_iou += iou
-
+    
             # Update progress bar
             pbar.set_postfix({
                 'loss': f'{loss.item():.4f}',
                 'iou': f'{iou:.4f}'
             })
-
-    avg_loss = total_loss / len(loader)
-    avg_iou = total_iou / len(loader)
-
-    print(f"\n{'='*60}")
-    print(f"Validation Results - Epoch {epoch}")
-    print(f"  Loss: {avg_loss:.4f}")
-    print(f"  mIoU: {avg_iou:.4f} ({avg_iou*100:.2f}%)")
-    print(f"{'='*60}\n")
-
-    return avg_iou, avg_loss
-
-
-def save_best_model(model, miou, best_miou, base_name="models/checkpoints/hiera_large_cropaug_streethazards"):
-    """
-    Save best model with timestamp in filename format: _HH_MM_DAY-MONTH-YY_mIoU_XXXX
-    Example: hiera_large_streethazards_14_30_07-11-25_mIoU_4523.pth
-    """
-    if miou > best_miou:
-        # Generate timestamp: _HH_MM_DAY-MONTH-YY
-        now = datetime.now()
-        timestamp = now.strftime("_%H_%M_%d-%m-%y")
-
-        # Format mIoU as integer (e.g., 0.4523 → 4523)
-        miou_str = f"_mIoU_{int(miou * 10000):04d}"
-        path = f"{base_name}{timestamp}{miou_str}.pth"
-
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        # Save model state dict
-        torch.save(model.state_dict(), path)
-
-        print(f"\n🎉 {'='*60}")
-        print(f"🎉 NEW BEST MODEL!")
-        print(f"🎉 mIoU improved: {best_miou:.4f} → {miou:.4f} (+{(miou-best_miou):.4f})")
-        print(f"🎉 Saved to: {path}")
-        print(f"🎉 {'='*60}\n")
-
-        return miou
-    return best_miou
-
-# -----------------------------
-# MAIN TRAINING LOOP
-# -----------------------------
-print("\n" + "="*60)
-print("STARTING TRAINING")
-print("="*60 + "\n")
-
-best_miou = 0.0
-
-for epoch in range(1, EPOCHS + 1):
-    print(f"\n{'#'*60}")
-    print(f"# EPOCH {epoch}/{EPOCHS}")
-    print(f"# Current LR: {optimizer.param_groups[0]['lr']:.6f}")
-    print(f"# Best mIoU so far: {best_miou:.4f}")
-    print(f"{'#'*60}\n")
-
-    # Training
-    train_loss, train_iou = train_one_epoch(model, train_loader, optimizer, criterion, epoch)
-    print(f"\nTraining Summary - Epoch {epoch}:")
-    print(f"  Average Loss: {train_loss:.4f}")
-    print(f"  Average IoU: {train_iou:.4f}")
-
-    # Validation
-    val_iou, val_loss = validate(model, val_loader, criterion, epoch)
-
-    # Step scheduler based on validation mIoU
-    scheduler.step(val_iou)
-
-    # Save best model
-    best_miou = save_best_model(model, val_iou, best_miou)
-
-    # TensorBoard logging
-    writer.add_scalar("Loss/train", train_loss, epoch)
-    writer.add_scalar("Loss/val", val_loss, epoch)
-    writer.add_scalar("IoU/train", train_iou, epoch)
-    writer.add_scalar("mIoU/val", val_iou, epoch)
-    writer.add_scalar("LR", optimizer.param_groups[0]["lr"], epoch)
-
-    # Log per-epoch comparison
-    print(f"\nEpoch {epoch} Summary:")
-    print(f"  Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
-    print(f"  Train IoU:  {train_iou:.4f} | Val mIoU:  {val_iou:.4f}")
-    print(f"  LR: {optimizer.param_groups[0]['lr']:.6f}")
-
-writer.close()
-
-print("\n" + "="*60)
-print("TRAINING COMPLETE!")
-print("="*60)
-print(f"Best validation mIoU: {best_miou:.4f} ({best_miou*100:.2f}%)")
-print(f"Model saved in: models/")
-print(f"TensorBoard logs: models/runs/hiera_large_streethazards/")
-print("="*60 + "\n")
+    
+            if (i + 1) % PRINT_FREQ == 0:
+                avg_loss = total_loss / (i + 1)
+                avg_iou = total_iou / (i + 1)
+                print(f"  Batch [{i+1}/{len(loader)}] Loss: {loss.item():.4f}, IoU: {iou:.4f}, Avg Loss: {avg_loss:.4f}, Avg IoU: {avg_iou:.4f}")
+    
+        return total_loss / len(loader), total_iou / len(loader)
+    
+    
+    def validate(model, loader, loss_fn, epoch):
+        model.eval()
+        total_loss, total_iou = 0.0, 0.0
+    
+        with torch.no_grad():
+            pbar = tqdm(loader, desc=f"Validation Epoch {epoch}")
+            for images, masks, _ in pbar:
+                images, masks = images.to(DEVICE), masks.to(DEVICE)
+    
+                # Forward pass
+                logits = model(images)
+    
+                # Compute loss and IoU
+                loss = loss_fn(logits, masks)
+                iou = compute_iou(logits, masks)
+    
+                total_loss += loss.item()
+                total_iou += iou
+    
+                # Update progress bar
+                pbar.set_postfix({
+                    'loss': f'{loss.item():.4f}',
+                    'iou': f'{iou:.4f}'
+                })
+    
+        avg_loss = total_loss / len(loader)
+        avg_iou = total_iou / len(loader)
+    
+        print(f"\n{'='*60}")
+        print(f"Validation Results - Epoch {epoch}")
+        print(f"  Loss: {avg_loss:.4f}")
+        print(f"  mIoU: {avg_iou:.4f} ({avg_iou*100:.2f}%)")
+        print(f"{'='*60}\n")
+    
+        return avg_iou, avg_loss
+    
+    
+    def save_best_model(model, miou, best_miou, base_name="models/checkpoints/hiera_large_cropaug_streethazards"):
+        """
+        Save best model with timestamp in filename format: _HH_MM_DAY-MONTH-YY_mIoU_XXXX
+        Example: hiera_large_streethazards_14_30_07-11-25_mIoU_4523.pth
+        """
+        if miou > best_miou:
+            # Generate timestamp: _HH_MM_DAY-MONTH-YY
+            now = datetime.now()
+            timestamp = now.strftime("_%H_%M_%d-%m-%y")
+    
+            # Format mIoU as integer (e.g., 0.4523 → 4523)
+            miou_str = f"_mIoU_{int(miou * 10000):04d}"
+            path = f"{base_name}{timestamp}{miou_str}.pth"
+    
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+    
+            # Save model state dict
+            torch.save(model.state_dict(), path)
+    
+            print(f"\n🎉 {'='*60}")
+            print(f"🎉 NEW BEST MODEL!")
+            print(f"🎉 mIoU improved: {best_miou:.4f} → {miou:.4f} (+{(miou-best_miou):.4f})")
+            print(f"🎉 Saved to: {path}")
+            print(f"🎉 {'='*60}\n")
+    
+            return miou
+        return best_miou
+    
+    # -----------------------------
+    # MAIN TRAINING LOOP
+    # -----------------------------
+    print("\n" + "="*60)
+    print("STARTING TRAINING")
+    print("="*60 + "\n")
+    
+    best_miou = 0.0
+    
+    for epoch in range(1, EPOCHS + 1):
+        print(f"\n{'#'*60}")
+        print(f"# EPOCH {epoch}/{EPOCHS}")
+        print(f"# Current LR: {optimizer.param_groups[0]['lr']:.6f}")
+        print(f"# Best mIoU so far: {best_miou:.4f}")
+        print(f"{'#'*60}\n")
+    
+        # Training
+        train_loss, train_iou = train_one_epoch(model, train_loader, optimizer, criterion, epoch)
+        print(f"\nTraining Summary - Epoch {epoch}:")
+        print(f"  Average Loss: {train_loss:.4f}")
+        print(f"  Average IoU: {train_iou:.4f}")
+    
+        # Validation
+        val_iou, val_loss = validate(model, val_loader, criterion, epoch)
+    
+        # Step scheduler based on validation mIoU
+        scheduler.step(val_iou)
+    
+        # Save best model
+        best_miou = save_best_model(model, val_iou, best_miou)
+    
+        # TensorBoard logging
+        writer.add_scalar("Loss/train", train_loss, epoch)
+        writer.add_scalar("Loss/val", val_loss, epoch)
+        writer.add_scalar("IoU/train", train_iou, epoch)
+        writer.add_scalar("mIoU/val", val_iou, epoch)
+        writer.add_scalar("LR", optimizer.param_groups[0]["lr"], epoch)
+    
+        # Log per-epoch comparison
+        print(f"\nEpoch {epoch} Summary:")
+        print(f"  Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+        print(f"  Train IoU:  {train_iou:.4f} | Val mIoU:  {val_iou:.4f}")
+        print(f"  LR: {optimizer.param_groups[0]['lr']:.6f}")
+    
+    writer.close()
+    
+    print("\n" + "="*60)
+    print("TRAINING COMPLETE!")
+    print("="*60)
+    print(f"Best validation mIoU: {best_miou:.4f} ({best_miou*100:.2f}%)")
+    print(f"Model saved in: models/")
+    print(f"TensorBoard logs: models/runs/hiera_large_streethazards/")
+    print("="*60 + "\n")

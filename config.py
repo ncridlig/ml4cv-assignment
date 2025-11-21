@@ -14,8 +14,9 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # =============================================================================
 # MODEL CONFIGURATION
 # =============================================================================
-MODEL_PATH = 'models/checkpoints/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth'
+MODEL_PATH = 'ablation_study/checkpoints/+Scale__20_52_19-11-25_mIoU_0.5176_size_512x512.pth' # 'models/checkpoints/hiera_large_cropaug_streethazards_04_43_12-11-25_mIoU_4677.pth'
 MODEL_ARCHITECTURE = 'deeplabv3_resnet50'  # Options: deeplabv3_resnet50, deeplabv3_resnet101, fcn_resnet50
+MODEL_THRESHOLD = -1.9271
 
 # =============================================================================
 # DATASET CONFIGURATION
@@ -25,22 +26,23 @@ TRAIN_ROOT = 'streethazards_train/train'
 TEST_ROOT = 'streethazards_test/test'
 
 # Image dimensions
-IMAGE_SIZE = (640, 640) # (1280, 720) is streethazards original resolution # 512 is the best for resnet50/101
+IMAGE_SIZE = (512, 512) # (1280, 720) is streethazards original resolution # 512 is the best for resnet50/101
 
 # =============================================================================
 # CLASS CONFIGURATION
 # =============================================================================
-NUM_CLASSES = 13  # Classes 0-12 (known classes for training)
+NUM_TRAINED_CLASSES = 13  # 0-12 normal classes
+NUM_CLASSES = 14  # For dataset purposes, 0-12 normal, 13 = anomaly (ignored in training)
 ANOMALY_CLASS_IDX = 13  # Class 13 is anomaly (only in test set)
 IGNORE_INDEX = 13  # Ignore anomaly class during training
 
 # =============================================================================
 # TRAINING HYPERPARAMETERS
 # =============================================================================
-BATCH_SIZE = 4  # Good for batch norm stability
+BATCH_SIZE = 3  # Good for batch norm stability
 LEARNING_RATE = 1e-4
 EPOCHS = 20  # Increase for stronger augmentation
-NUM_WORKERS = 4
+NUM_WORKERS = 3
 PRINT_FREQ = 500  # Print training stats every N iterations
 
 # =============================================================================

@@ -31,7 +31,7 @@ dev = [
 [tool.setuptools]
 # Tell setuptools which directories contain Python code
 # This makes 'config.py', 'utils/', etc. importable
-packages = ["utils", "anomaly_detection", "models.training_scripts", "visualizations"]
+packages = ["utils", "anomaly_detection", "models.training_scripts", "visualizations", "ablation_study"]
 
 # Also include standalone modules at the root
 py-modules = ["config", "evaluate_qualitative"]

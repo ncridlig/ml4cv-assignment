@@ -1,0 +1,6 @@
+Model,Simple Max Logits
+No Aug (56.29% mIoU) Ablation,38.3 / 88.5 / 6.6 / 13.5
++Scale (51.76% mIoU) Ablation,27.3 / 91.4 / 8.5 / 15.6
++Scale+Rotate (50.43% mIoU) Ablation,30.1 / 90.4 / 7.6 / 14.2
++Scale+Rotate+Flip (49.01% mIoU) Ablation,34.5 / 89.4 / 7.1 / 13.7
++Scale+Rotate+Flip+Color (48.13% mIoU) Ablation,30.6 / 90.8 / 8.4 / 15.7

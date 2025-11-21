@@ -20,6 +20,8 @@ def load_model(model_path, device, num_classes=13, architecture='deeplabv3_resne
             - 'deeplabv3_resnet50' (default)
             - 'deeplabv3_resnet101'
             - 'fcn_resnet50'
+            - 'segformer_b5'
+            - 'hiera_large_224'
 
     Returns:
         model: Loaded segmentation model in eval mode
@@ -43,9 +45,20 @@ def load_model(model_path, device, num_classes=13, architecture='deeplabv3_resne
             num_labels=num_classes,
             ignore_mismatched_sizes=True,  # Allow different number of classes
         )
+    elif architecture == 'hiera_large_224':
+        # Import HieraSegmentation from training script
+        from models.training_scripts.hiera_large_224 import HieraSegmentation
+
+        # Create the full segmentation model (backbone + decode head)
+        model = HieraSegmentation(
+            backbone_name='hiera_large_224',
+            num_classes=num_classes,
+            pretrained=False  # We'll load weights from checkpoint
+        )
+        print("✅ Hiera segmentation model initialized")
     else:
         raise ValueError(f"Unsupported architecture: {architecture}. "
-                        f"Choose from: deeplabv3_resnet50, deeplabv3_resnet101, fcn_resnet50")
+                        f"Choose from: deeplabv3_resnet50, deeplabv3_resnet101, fcn_resnet50, segformer_b5, hiera_large_224")
 
     # Load checkpoint (strict=False to ignore aux_classifier if present)
     # The aux_classifier is used during training but not during inference

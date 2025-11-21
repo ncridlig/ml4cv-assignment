@@ -34,8 +34,16 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Import from project modules
-from config import DEVICE, NUM_CLASSES, ANOMALY_CLASS_IDX, MAX_PIXELS_EVALUATION, RANDOM_SEED
+from config import DEVICE, NUM_CLASSES, NUM_TRAINED_CLASSES, ANOMALY_CLASS_IDX, MAX_PIXELS_EVALUATION, RANDOM_SEED
 from utils.dataloader import StreetHazardsDataset, get_transforms
+
+# Import HEAT components for full implementation
+import pickle
+from anomaly_detection.heat_anomaly_detection import (
+    HEAT,
+    compute_class_statistics as compute_heat_statistics,
+    compute_energy_score as compute_energy_score_full
+)
 
 # Try to import SegFormer and Hiera (optional)
 try:
@@ -60,7 +68,16 @@ except ImportError:
 # MODEL CONFIGURATIONS
 # =============================================================================
 
-MODELS = {
+METHODS = [
+            'Simple Max Logits',
+            # 'Maximum Softmax Probability',
+            # 'Standardized Max Logits',
+            # 'Energy Score',
+            # 'HEAT',
+        ]
+
+DEV_MODELS = {
+    'name': 'dev_models',
     'ResNet50\n(50.26% mIoU)\nAugmented': {
         'path': 'models/checkpoints/deeplabv3_resnet50_augmented_10_47_09-11-25_mIoU_5026.pth',
         'architecture': 'deeplabv3_resnet50',
@@ -102,6 +119,86 @@ MODELS = {
         'architecture': 'hiera_large',
         'miou': 46.77,
         'image_size': (224, 224),  # Hiera trained at 224x224
+    },
+}
+
+ABLATION_MODELS = {
+    'name': 'ablation_study',
+    'No Aug\n(56.29% mIoU)\nAblation': {
+        'path': 'ablation_study/checkpoints/No_Aug__18_26_19-11-25_mIoU_0.5611_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 56.29,
+        'image_size': (512, 512),
+    },
+    '+Scale\n(51.76% mIoU)\nAblation': {
+        'path': 'ablation_study/checkpoints/+Scale__20_52_19-11-25_mIoU_0.5176_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 51.76,
+        'image_size': (512, 512),
+    },
+    '+Scale+Rotate\n(50.43% mIoU)\nAblation': {
+        'path': 'ablation_study/checkpoints/+Scale+Rotate__22_02_19-11-25_mIoU_0.5043_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 50.43,
+        'image_size': (512, 512),
+    },
+    '+Scale+Rotate+Flip\n(49.01% mIoU)\nAblation': {
+        'path': 'ablation_study/checkpoints/+Scale+Rotate+Flip__23_19_19-11-25_mIoU_0.4901_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 49.01,
+        'image_size': (512, 512),
+    },
+    '+Scale+Rotate+Flip+Color\n(48.13% mIoU)\nAblation': {
+        'path': 'ablation_study/checkpoints/+Scale+Rotate+Flip+Color__00_17_20-11-25_mIoU_0.4813_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 48.13,
+        'image_size': (512, 512),
+    },
+}
+
+SCALE_RANGE_MODELS = {
+    'name': 'scale_range_ablation',
+    'Scale 0.5-1.5\n(51.43% mIoU)\nZoom-In': {
+        'path': 'ablation_study/checkpoints/ScaleRange_0.5_1.5__12_36_20-11-25_mIoU_0.5143_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 51.43,
+        'image_size': (512, 512),
+    },
+    'Scale 0.75-1.25\n(51.37% mIoU)\nConservative': {
+        'path': 'ablation_study/checkpoints/ScaleRange_0.75_1.25__09_04_20-11-25_mIoU_0.5137_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 51.37,
+        'image_size': (512, 512),
+    },
+    'Scale 0.7-2.0\n(51.05% mIoU)\nZoom-Out': {
+        'path': 'ablation_study/checkpoints/ScaleRange_0.7_2.0__13_40_20-11-25_mIoU_0.5105_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 51.05,
+        'image_size': (512, 512),
+    },
+    'Scale 0.5-2.0\n(49.90% mIoU)\nBaseline': {
+        'path': 'ablation_study/checkpoints/ScaleRange_0.5_2.0__09_49_20-11-25_mIoU_0.4990_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 49.90,
+        'image_size': (512, 512),
+    },
+    'Scale 0.3-3.0\n(49.88% mIoU)\nAggressive': {
+        'path': 'ablation_study/checkpoints/ScaleRange_0.3_3.0__11_32_20-11-25_mIoU_0.4988_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 49.88,
+        'image_size': (512, 512),
+    },
+    'Scale 0.4-2.5\n(49.55% mIoU)\nExtended': {
+        'path': 'ablation_study/checkpoints/ScaleRange_0.4_2.5__10_40_20-11-25_mIoU_0.4955_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 49.55,
+        'image_size': (512, 512),
+    },
+    'Scale 0.9-1.1\n(49.27% mIoU)\nMinimal': {
+        'path': 'ablation_study/checkpoints/ScaleRange_0.9_1.1__07_35_20-11-25_mIoU_0.4927_size_512x512.pth',
+        'architecture': 'deeplabv3_resnet50',
+        'miou': 49.27,
+        'image_size': (512, 512),
     },
 }
 
@@ -239,20 +336,20 @@ def load_model(model_path, architecture):
 
     if architecture == 'deeplabv3_resnet50':
         model = deeplabv3_resnet50(weights=None)
-        model.classifier[-1] = torch.nn.Conv2d(256, NUM_CLASSES, kernel_size=1)
+        model.classifier[-1] = torch.nn.Conv2d(256, NUM_TRAINED_CLASSES, kernel_size=1)
         # aux_classifier might be None depending on PyTorch version
         if hasattr(model, 'aux_classifier') and model.aux_classifier is not None:
-            model.aux_classifier[-1] = torch.nn.Conv2d(256, NUM_CLASSES, kernel_size=1)
+            model.aux_classifier[-1] = torch.nn.Conv2d(256, NUM_TRAINED_CLASSES, kernel_size=1)
 
         state_dict = torch.load(model_path, map_location=DEVICE)
         model.load_state_dict(state_dict, strict=False)
 
     elif architecture == 'deeplabv3_resnet101':
         model = deeplabv3_resnet101(weights=None)
-        model.classifier[-1] = torch.nn.Conv2d(256, NUM_CLASSES, kernel_size=1)
+        model.classifier[-1] = torch.nn.Conv2d(256, NUM_TRAINED_CLASSES, kernel_size=1)
         # aux_classifier might be None depending on PyTorch version
         if hasattr(model, 'aux_classifier') and model.aux_classifier is not None:
-            model.aux_classifier[-1] = torch.nn.Conv2d(256, NUM_CLASSES, kernel_size=1)
+            model.aux_classifier[-1] = torch.nn.Conv2d(256, NUM_TRAINED_CLASSES, kernel_size=1)
 
         state_dict = torch.load(model_path, map_location=DEVICE)
         model.load_state_dict(state_dict, strict=False)
@@ -267,7 +364,7 @@ def load_model(model_path, architecture):
             # From segformerb5.py lines 101-105
             segformer_model = SegformerForSemanticSegmentation.from_pretrained(
                 "nvidia/segformer-b5-finetuned-ade-640-640",
-                num_labels=NUM_CLASSES,  # 13 classes (same as training)
+                num_labels=NUM_TRAINED_CLASSES,  # 13 classes (same as training)
                 ignore_mismatched_sizes=True  # Allow different number of classes
             )
 
@@ -295,7 +392,7 @@ def load_model(model_path, architecture):
             # Create Hiera model (same architecture as training script)
             hiera_model = HieraSegmentation(
                 backbone_name='hiera_base_224',
-                num_classes=NUM_CLASSES,
+                num_classes=NUM_TRAINED_CLASSES,
                 pretrained=False  # We'll load trained weights
             )
 
@@ -323,7 +420,7 @@ def load_model(model_path, architecture):
             # Create Hiera model (same architecture as training script)
             hiera_model = HieraSegmentation(
                 backbone_name='hiera_large_224',
-                num_classes=NUM_CLASSES,
+                num_classes=NUM_TRAINED_CLASSES,
                 pretrained=False  # We'll load trained weights
             )
 
@@ -403,7 +500,7 @@ def method_standardized_max_logits(logits, class_means, class_stds):
 
     # Standardize per predicted class
     sml = torch.zeros_like(max_logits)
-    for c in range(NUM_CLASSES):
+    for c in range(NUM_TRAINED_CLASSES):
         mask = (pred_classes == c)
         if mask.any():
             sml[mask] = (max_logits[mask] - class_means[c]) / (class_stds[c] + 1e-8)
@@ -429,7 +526,7 @@ def compute_class_statistics(model, val_loader):
     """Compute per-class mean and std of max logits on validation set."""
     print("Computing class statistics on validation set...")
 
-    class_logits = {c: [] for c in range(NUM_CLASSES)}
+    class_logits = {c: [] for c in range(NUM_TRAINED_CLASSES)}
 
     with torch.no_grad():
         for images, masks, _ in tqdm(val_loader, desc="Validation statistics"):
@@ -438,16 +535,16 @@ def compute_class_statistics(model, val_loader):
 
             max_logits, pred_classes = torch.max(outputs, dim=1)
 
-            for c in range(NUM_CLASSES):
+            for c in range(NUM_TRAINED_CLASSES):
                 mask = (pred_classes == c)
                 if mask.any():
                     class_logits[c].append(max_logits[mask].cpu())
 
     # Calculate statistics
-    class_means = torch.zeros(NUM_CLASSES)
-    class_stds = torch.ones(NUM_CLASSES)
+    class_means = torch.zeros(NUM_TRAINED_CLASSES)
+    class_stds = torch.ones(NUM_TRAINED_CLASSES)
 
-    for c in range(NUM_CLASSES):
+    for c in range(NUM_TRAINED_CLASSES):
         if len(class_logits[c]) > 0:
             logits_c = torch.cat(class_logits[c])
             class_means[c] = logits_c.mean()
@@ -455,9 +552,17 @@ def compute_class_statistics(model, val_loader):
 
     return class_means.to(DEVICE), class_stds.to(DEVICE)
 
-def evaluate_method(model, test_loader, method_name, class_means=None, class_stds=None):
+def evaluate_method(model, test_loader, method_name, class_means=None, class_stds=None, heat_instance=None):
     """
     Evaluate a single anomaly detection method on a model.
+
+    Args:
+        model: The segmentation model
+        test_loader: DataLoader for test set
+        method_name: Name of anomaly detection method
+        class_means: Per-class mean logits (for SML)
+        class_stds: Per-class std logits (for SML)
+        heat_instance: HEAT instance with precomputed statistics (for full HEAT on DeepLabV3)
 
     Returns:
         dict: {'fpr95': float, 'auroc': float, 'aupr': float, 'f1': float, 'threshold': float}
@@ -472,22 +577,28 @@ def evaluate_method(model, test_loader, method_name, class_means=None, class_std
             images = images.to(DEVICE)
             masks = masks.to(DEVICE)
 
-            # Get model predictions (logits)
-            outputs = model(images)['out']
-
             # Apply anomaly detection method
-            if method_name == 'Simple Max Logits':
-                anomaly_scores = method_simple_max_logits(outputs)
-            elif method_name == 'Maximum Softmax Probability':
-                anomaly_scores = method_maximum_softmax_probability(outputs)
-            elif method_name == 'Standardized Max Logits':
-                anomaly_scores = method_standardized_max_logits(outputs, class_means, class_stds)
-            elif method_name == 'Energy Score':
-                anomaly_scores = method_energy_score(outputs)
-            elif method_name == 'HEAT':
-                anomaly_scores = method_heat(outputs)
+            if method_name == 'HEAT' and heat_instance is not None:
+                # Use full HEAT implementation for DeepLabV3
+                anomaly_scores = heat_instance.forward(images)
+                anomaly_scores = anomaly_scores.cpu().numpy()
             else:
-                raise ValueError(f"Unknown method: {method_name}")
+                # Get model predictions (logits) for other methods
+                outputs = model(images)['out']
+
+                if method_name == 'Simple Max Logits':
+                    anomaly_scores = method_simple_max_logits(outputs)
+                elif method_name == 'Maximum Softmax Probability':
+                    anomaly_scores = method_maximum_softmax_probability(outputs)
+                elif method_name == 'Standardized Max Logits':
+                    anomaly_scores = method_standardized_max_logits(outputs, class_means, class_stds)
+                elif method_name == 'Energy Score':
+                    anomaly_scores = method_energy_score(outputs)
+                elif method_name == 'HEAT':
+                    # Fallback to energy score for non-DeepLabV3 architectures
+                    anomaly_scores = method_heat(outputs)
+                else:
+                    raise ValueError(f"Unknown method: {method_name}")
 
             # Ground truth: 1 if anomaly (class 13), 0 otherwise
             ground_truth = (masks == ANOMALY_CLASS_IDX).cpu().numpy().astype(np.float32)
@@ -531,13 +642,13 @@ def evaluate_method(model, test_loader, method_name, class_means=None, class_std
 
 def main():
     """Run comprehensive comparison of all models and methods."""
-
+    MODELS = SCALE_RANGE_MODELS
     print("="*80)
-    print("COMPREHENSIVE MODEL vs ANOMALY DETECTION METHOD COMPARISON")
+    print("SCALE RANGE ABLATION: MODEL vs ANOMALY DETECTION METHOD COMPARISON")
     print("="*80)
-    print(f"\nModels to test: {len(MODELS)}")
-    print(f"Methods to test: 5")
-    print(f"Total evaluations: {len(MODELS) * 5} = 25")
+    print(f"\nModels to test: {len(MODELS)-1}")
+    print(f"Methods to test: {len(METHODS)}")
+    print(f"Total evaluations: {len(MODELS) * len(METHODS)}")
     print(f"Device: {DEVICE}")
     print("="*80)
 
@@ -546,6 +657,8 @@ def main():
 
     # Iterate over models
     for model_name, model_config in MODELS.items():
+        if model_name == 'name':
+            continue
         print(f"\n{'='*80}")
         print(f"MODEL: {model_name.replace(chr(10), ' ')}")
         print(f"mIoU: {model_config['miou']}%")
@@ -588,17 +701,68 @@ def main():
         # Compute class statistics for SML (only once per model)
         class_means, class_stds = compute_class_statistics(model, val_loader)
 
+        # Initialize HEAT for DeepLabV3 models
+        heat_instance = None
+        if 'deeplabv3' in model_config['architecture']:
+            print("\n" + "="*80)
+            print("INITIALIZING FULL HEAT FOR DEEPLABV3")
+            print("="*80)
+
+            # Create cache path based on model architecture and mIoU
+            stats_cache_dir = Path('assets/heat_cache')
+            stats_cache_dir.mkdir(parents=True, exist_ok=True)
+            stats_path = stats_cache_dir / f"heat_stats_{model_config['architecture']}_{model_config['miou']:.2f}.pkl"
+
+            if stats_path.exists():
+                # Load cached statistics
+                print(f"Loading cached HEAT statistics from {stats_path}...")
+                with open(stats_path, 'rb') as f:
+                    stats = pickle.load(f)
+                    heat_class_means = stats['class_means']
+                    heat_cov = stats['cov']
+                print("✅ Statistics loaded from cache")
+            else:
+                # Compute statistics from validation set
+                print("Computing HEAT feature statistics (this will take several minutes)...")
+                print("Using validation set (1,031 images) to avoid OOM...")
+                heat_class_means, heat_cov = compute_heat_statistics(
+                    model, val_loader, DEVICE,
+                    num_classes=NUM_TRAINED_CLASSES,
+                    architecture=model_config['architecture']
+                )
+                # Cache for future runs
+                print(f"Saving statistics to {stats_path}...")
+                with open(stats_path, 'wb') as f:
+                    pickle.dump({'class_means': heat_class_means, 'cov': heat_cov}, f)
+                print("✅ Statistics cached")
+
+            # Compute covariance inverse
+            print("Computing covariance inverse...")
+            heat_cov_inv = torch.inverse(heat_cov)
+            print(f"Covariance inverse shape: {heat_cov_inv.shape}")
+
+            # Initialize HEAT instance
+            print("Initializing HEAT...")
+            heat_instance = HEAT(
+                model=model,
+                class_means=heat_class_means,
+                cov_inv=heat_cov_inv,
+                device=DEVICE,
+                temperature=1.0,
+                alpha=0.9,
+                kernel_size=3,
+                architecture=model_config['architecture']
+            )
+            print("✅ HEAT initialized successfully")
+            print("="*80 + "\n")
+        else:
+            print(f"\n⚠️  Skipping full HEAT for {model_config['architecture']} - will use energy score fallback\n")
+
         # Test all methods on this model
         model_results = {}
 
-        methods = [
-            'Simple Max Logits',
-            'Maximum Softmax Probability',
-            'Standardized Max Logits',
-            'Energy Score',
-            'HEAT',
-        ]
-
+        methods = METHODS
+        
         for method in methods:
             try:
                 metrics = evaluate_method(
@@ -606,7 +770,8 @@ def main():
                     test_loader,
                     method,
                     class_means=class_means,
-                    class_stds=class_stds
+                    class_stds=class_stds,
+                    heat_instance=heat_instance
                 )
                 model_results[method] = metrics
             except Exception as e:
@@ -670,22 +835,22 @@ def main():
     df_threshold = pd.DataFrame(table_data_threshold)
 
     # Save main table to CSV
-    output_csv = 'assets/model_method_comparison.csv'
+    output_csv = f"assets/{MODELS['name']}_method_comparison.csv"
     df_main.to_csv(output_csv, index=False)
     print(f"\n✅ Saved main CSV: {output_csv}")
 
     # Save F1 scores table
-    output_f1_csv = 'assets/model_method_f1_scores.csv'
+    output_f1_csv = f"assets/{MODELS['name']}_method_f1_scores.csv"
     df_f1.to_csv(output_f1_csv, index=False)
     print(f"✅ Saved F1 scores CSV: {output_f1_csv}")
 
     # Save thresholds table
-    output_threshold_csv = 'assets/model_method_thresholds.csv'
+    output_threshold_csv = f"assets/{MODELS['name']}_method_thresholds.csv"
     df_threshold.to_csv(output_threshold_csv, index=False)
     print(f"✅ Saved thresholds CSV: {output_threshold_csv}")
 
     # Save to markdown table
-    output_md = 'assets/model_method_comparison.md'
+    output_md = f"assets/{MODELS['name']}_method_comparison.md"
     with open(output_md, 'w') as f:
         f.write("# Model vs Anomaly Detection Method Comparison\n\n")
         f.write("## Main Results\n\n")

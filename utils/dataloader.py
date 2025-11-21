@@ -72,7 +72,7 @@ class StreetHazardsDataset(Dataset):
     Custom dataset for StreetHazards segmentation.
     Loads image-mask pairs from the dataset folder structure.
     """
-    def __init__(self, root_dir, split='training', transform=None, mask_transform=None, image_size=None):
+    def __init__(self, root_dir, split='training', transform=None, mask_transform=None, image_size=None, augconfig=None):
         """
         Args:
             root_dir (str): Path to dataset root (e.g., 'streethazards_train/train')
@@ -86,6 +86,7 @@ class StreetHazardsDataset(Dataset):
         self.transform = transform
         self.mask_transform = mask_transform
         self.image_size = image_size if image_size is not None else IMAGE_SIZE
+        self.augconfig = augconfig
 
         # Find all image paths
         if split == 'test':
@@ -136,27 +137,49 @@ class StreetHazardsDataset(Dataset):
         # Apply transformations
         if self.transform is None and self.mask_transform is None:
             # Training mode: apply joint transforms (synchronized augmentations)
+            if self.augconfig is None:
 
-            # 1. Multi-scale random crop (KEY AUGMENTATION)
-            # Following DeepLabV3+ paper: variable crop sizes with scale range [0.5, 2.0]
-            scale_crop = JointRandomScaleCrop(output_size=self.image_size, scale_range=(0.5, 2.0), base_crop_size=512)
-            image, mask_pil = scale_crop(image, mask_pil)
+                # 1. Multi-scale random crop (KEY AUGMENTATION)
+                # Following DeepLabV3+ paper: variable crop sizes with scale range [0.5, 2.0]
+                # Default scale_range can be overridden via augconfig
+                default_scale_range = (0.5, 2.0)
+                scale_crop = JointRandomScaleCrop(output_size=self.image_size, scale_range=default_scale_range, base_crop_size=512)
+                image, mask_pil = scale_crop(image, mask_pil)
 
-            # 2. Random rotation (±10 degrees) introduces black edges
-            # rotation = JointRandomRotation(degrees=10)
-            # image, mask_pil = rotation(image, mask_pil)
+                # 2. Random rotation (±10 degrees) introduces black edges
+                # rotation = JointRandomRotation(degrees=10)
+                # image, mask_pil = rotation(image, mask_pil)
 
-            # 3. Random horizontal flip
-            flip = JointRandomHorizontalFlip(p=0.5)
-            image, mask_pil = flip(image, mask_pil)
+                # 3. Random horizontal flip
+                flip = JointRandomHorizontalFlip(p=0.5)
+                image, mask_pil = flip(image, mask_pil)
 
-            # 4. Image-only augmentations
-            # Color jitter (image only)
-            image = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1)(image)
+                # 4. Image-only augmentations
+                # Color jitter (image only)
+                image = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1)(image)
 
-            # Gaussian blur (image only, simulate motion/focus blur)
-            if np.random.random() < 0.5:
-                image = transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))(image)
+                # 5. Gaussian blur (image only, simulate motion/focus blur)
+                if np.random.random() < 0.5:
+                    image = transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))(image)
+            
+            else:
+                # Apply augmentations based on augconfig
+                if self.augconfig.get('scale', False):
+                    # Get scale_range from augconfig, default to (0.5, 2.0)
+                    scale_range = self.augconfig.get('scale_range', (0.5, 2.0))
+                    scale_crop = JointRandomScaleCrop(output_size=self.image_size, scale_range=scale_range, base_crop_size=512)
+                    image, mask_pil = scale_crop(image, mask_pil)
+
+                if self.augconfig.get('rotate', False):
+                    rotation = JointRandomRotation(degrees=10)
+                    image, mask_pil = rotation(image, mask_pil)
+
+                if self.augconfig.get('flip', False):
+                    flip = JointRandomHorizontalFlip(p=0.5)
+                    image, mask_pil = flip(image, mask_pil)
+
+                if self.augconfig.get('color', False):
+                    image = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1)(image)
 
             # Convert to tensor and normalize
             image = transforms.ToTensor()(image)

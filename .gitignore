@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.egg-info
 
 # Virtual Environments
 .venv/
@@ -37,6 +38,8 @@ outputs/
 results/
 logs/
 wandb/
+assets/anomaly_detection/heat_log_*.txt
+events.out.tfevents.*
 
 # IDE
 .vscode/
@@ -58,3 +61,4 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+

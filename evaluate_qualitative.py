@@ -52,9 +52,13 @@ def predict(model, image, device, target_size, anomaly_threshold):
         output = model(image_batch)
         logits = output['out'].squeeze(0)  # (num_classes, H, W)
     except (TypeError, KeyError, AttributeError):
-        # For Hugging Face SegFormer
-        outputs = model(pixel_values=image_batch)
-        logits = outputs.logits.squeeze(0)  # (num_classes, H, W)
+        try:
+            # For Hugging Face SegFormer
+            outputs = model(pixel_values=image_batch)
+            logits = outputs.logits.squeeze(0)  # (num_classes, H, W)
+        except (TypeError, AttributeError):
+            # For Hiera and other models that return logits directly
+            logits = model(image_batch).squeeze(0)  # (num_classes, H, W)
 
     # Upsample to target size if needed (SegFormer outputs smaller resolution)
     if logits.shape[-2:] != target_size:
@@ -408,7 +412,7 @@ def parse_args():
     parser.add_argument('--model-path', type=str, default=MODEL_PATH,
                         help='Path to model checkpoint')
     parser.add_argument('--architecture', type=str, default=DEFAULT_ARCHITECTURE,
-                        choices=['deeplabv3_resnet50', 'deeplabv3_resnet101', 'fcn_resnet50', 'segformer_b5', 'hiera_base_224'],
+                        choices=['deeplabv3_resnet50', 'deeplabv3_resnet101', 'fcn_resnet50', 'segformer_b5', 'hiera_base_224', 'hiera_large_224'],
                         help='Model architecture')
 
     # Image configuration
@@ -443,6 +447,7 @@ def parse_args():
 # -----------------------------
 # MAIN
 # python evaluate_qualitative.py --model-path models/checkpoints/segformer_b5_streethazards_augmented_10_06_12-11-25_mIoU_5412.pth --architecture segformer_b5
+# python evaluate_qualitative.py --model-path models/checkpoints/hiera_large_cropaug_streethazards_04_43_12-11-25_mIoU_4677.pth --architecture hiera_base_224
 # -----------------------------
 if __name__ == "__main__":
     args = parse_args()

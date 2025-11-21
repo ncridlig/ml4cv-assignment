@@ -23,56 +23,6 @@ from config import (
     TRAIN_ROOT
 )
 
-# Note: NUM_CLASSES in training is 14 (includes anomaly class), but we ignore it
-NUM_CLASSES = 14  # Override: 0-12 normal, 13 = anomaly (ignored in training)
-
-# -----------------------------
-# DATASETS
-# -----------------------------
-train_transform, train_mask_transform = get_transforms(IMAGE_SIZE, is_training=True)
-val_test_transform, val_test_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
-
-train_dataset = StreetHazardsDataset(
-    root_dir=TRAIN_ROOT,
-    split='training',
-    transform=train_transform,
-    mask_transform=train_mask_transform
-)
-val_dataset = StreetHazardsDataset(
-    root_dir=TRAIN_ROOT,
-    split='validation',
-    transform=val_test_transform,
-    mask_transform=val_test_mask_transform
-)
-
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, drop_last=True) # drop last avoids bath norm issue over singleton image
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
-
-# -----------------------------
-# TENSORBOARD SETUP
-# -----------------------------
-writer = SummaryWriter(log_dir="models/runs/streethazards_experiment")
-
-# -----------------------------
-# MODEL
-# -----------------------------
-model = deeplabv3_resnet50(weights='DEFAULT')
-# 13 normal classes + 1 anomaly class → ignore anomaly (index 13)
-# Reconfigure the pretrained DeepLab model to predict 13 segmentation classes instead of the 21 COCO classes
-model.classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)
-
-# IMPORTANT: Also modify auxiliary classifier to predict 13 classes
-# The aux_classifier helps with gradient flow during training
-model.aux_classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)
-
-model.to(DEVICE)
-
-# -----------------------------
-# LOSS, OPTIMIZER, SCHEDULER
-# -----------------------------
-criterion = nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX)
-optimizer = optim.Adam(model.parameters(), lr=LR)
-scheduler = ReduceLROnPlateau(optimizer, mode='max', patience=3, factor=0.5)
 
 # -----------------------------
 # METRICS
@@ -96,7 +46,7 @@ def compute_iou(preds, labels, num_classes=13, ignore_index=13):
 # -----------------------------
 # TRAIN / VALIDATE
 # -----------------------------
-def train_one_epoch(model, loader, optimizer, loss_fn):
+def train_one_epoch(model, loader, optimizer, loss_fn, max_batches=None):
     model.train()
     total_loss = 0.0
     total_main_loss = 0.0
@@ -124,20 +74,24 @@ def train_one_epoch(model, loader, optimizer, loss_fn):
         total_aux_loss += aux_loss.item()
         if (i + 1) % PRINT_FREQ == 0:
             print(f"Iter [{i+1}/{len(loader)}] Loss: {loss.item():.4f} (main: {main_loss.item():.4f}, aux: {aux_loss.item():.4f})")
+        if (max_batches is not None) and (i + 1 >= max_batches):
+            break
     return total_loss / len(loader), total_main_loss / len(loader), total_aux_loss / len(loader)
 
 
-def validate(model, loader, loss_fn):
+def validate(model, loader, loss_fn, max_batches=None):
     model.eval()
     total_loss, total_iou = 0.0, 0.0
     with torch.no_grad():
-        for images, masks, _ in tqdm(loader, desc="Validating"):
+        for i, (images, masks, _) in enumerate(tqdm(loader, desc="Validating")):
             images, masks = images.to(DEVICE), masks.to(DEVICE)
             outputs = model(images)['out']
             loss = loss_fn(outputs, masks)
             iou = compute_iou(outputs, masks)
             total_loss += loss.item()
             total_iou += iou
+            if (max_batches is not None) and (i + 1 >= max_batches):
+                break
     avg_loss = total_loss / len(loader)
     avg_iou = total_iou / len(loader)
     print(f"Validation Loss: {avg_loss:.4f}, mIoU: {avg_iou:.4f}")
@@ -168,22 +122,71 @@ def save_best_model(model, miou, best_miou, base_name="models/checkpoints/deepla
 # -----------------------------
 # MAIN TRAINING LOOP
 # -----------------------------
-best_miou = 0.0
+if __name__ == "__main__":
+    # -----------------------------
+    # DATASETS
+    # -----------------------------
+    train_transform, train_mask_transform = get_transforms(IMAGE_SIZE, is_training=True)
+    val_test_transform, val_test_mask_transform = get_transforms(IMAGE_SIZE, is_training=False)
 
-for epoch in range(1, EPOCHS + 1):
-    print(f"\nEpoch {epoch}/{EPOCHS}")
-    train_loss, main_loss, aux_loss = train_one_epoch(model, train_loader, optimizer, criterion)
-    miou = validate(model, val_loader, criterion)
-    scheduler.step(miou)
-    best_miou = save_best_model(model, miou, best_miou)
+    train_dataset = StreetHazardsDataset(
+        root_dir=TRAIN_ROOT,
+        split='training',
+        transform=train_transform,
+        mask_transform=train_mask_transform
+    )
+    val_dataset = StreetHazardsDataset(
+        root_dir=TRAIN_ROOT,
+        split='validation',
+        transform=val_test_transform,
+        mask_transform=val_test_mask_transform
+    )
 
-    # ---- TensorBoard logging ----
-    writer.add_scalar("Loss/train_total", train_loss, epoch)
-    writer.add_scalar("Loss/train_main", main_loss, epoch)
-    writer.add_scalar("Loss/train_aux", aux_loss, epoch)
-    writer.add_scalar("mIoU/val", miou, epoch)
-    writer.add_scalar("LR", optimizer.param_groups[0]["lr"], epoch)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, drop_last=True) # drop last avoids bath norm issue over singleton image
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
-writer.close()
-print("Training complete.")
+    # -----------------------------
+    # TENSORBOARD SETUP
+    # -----------------------------
+    writer = SummaryWriter(log_dir="models/runs/streethazards_experiment")
+
+    # -----------------------------
+    # MODEL
+    # -----------------------------
+    model = deeplabv3_resnet50(weights='DEFAULT')
+    # 13 normal classes + 1 anomaly class → ignore anomaly (index 13)
+    # Reconfigure the pretrained DeepLab model to predict 13 segmentation classes instead of the 21 COCO classes
+    model.classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)
+
+    # IMPORTANT: Also modify auxiliary classifier to predict 13 classes
+    # The aux_classifier helps with gradient flow during training
+    model.aux_classifier[-1] = nn.Conv2d(256, 13, kernel_size=1)
+
+    model.to(DEVICE)
+
+    # -----------------------------
+    # LOSS, OPTIMIZER, SCHEDULER
+    # -----------------------------
+    criterion = nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX)
+    optimizer = optim.Adam(model.parameters(), lr=LR)
+    scheduler = ReduceLROnPlateau(optimizer, mode='max', patience=3, factor=0.5)
+
+    best_miou = 0.0
+
+    for epoch in range(1, EPOCHS + 1):
+        print(f"\nEpoch {epoch}/{EPOCHS}")
+        train_loss, main_loss, aux_loss = train_one_epoch(model, train_loader, optimizer, criterion)
+        miou = validate(model, val_loader, criterion)
+        scheduler.step(miou)
+        best_miou = save_best_model(model, miou, best_miou)
+
+        # ---- TensorBoard logging ----
+        writer.add_scalar("Loss/train_total", train_loss, epoch)
+        writer.add_scalar("Loss/train_main", main_loss, epoch)
+        writer.add_scalar("Loss/train_aux", aux_loss, epoch)
+        writer.add_scalar("mIoU/val", miou, epoch)
+        writer.add_scalar("LR", optimizer.param_groups[0]["lr"], epoch)
+
+    writer.close()
+    print("Training complete.")
 
